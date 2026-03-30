@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -10,4 +5,495 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Entity {
+  LSC
+  TBR
+  FSP
+  BOWLING
+  SQUASH
+  BASKETBALL
+  BEER_PONG
+  PADEL
+  FOUNDATION
+}
+
+enum LifecycleStatus {
+  DRAFT
+  IN_REVIEW
+  NEGOTIATION
+  AWAITING_SIGNATURE
+  SIGNED
+  ACTIVE
+  EXPIRING
+  EXPIRED
+  TERMINATED
+}
+
+enum DocumentCategory {
+  SPONSORSHIP
+  VENDOR
+  EMPLOYMENT
+  ESOP
+  NDA
+  ARENA_HOST
+  TERMS_OF_SERVICE
+  WAIVER
+  IP_ASSIGNMENT
+  PILOT_PROGRAM
+  BOARD_RESOLUTION
+  POLICY
+  OTHER
+}
+
+enum SignatureStatus {
+  PENDING
+  SENT
+  SIGNED
+  STALLED
+}
+
+enum Priority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum IssueCategory {
+  IP
+  EMPLOYMENT
+  REGULATORY
+  CONTRACTUAL
+}
+
+enum IssueStatus {
+  OPEN
+  IN_PROGRESS
+  ESCALATED
+  RESOLVED
+  CLOSED
+}
+
+enum TrackerCategory {
+  PLATFORM
+  VAUNT_ACQUISITION
+  KEY_AGREEMENTS
+  CORPORATE
+  PAYMENTS
+  IP_PATENTS
+  GIG_MARKETING
+  OTHER
+}
+
+enum TrackerStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  IN_REVIEW
+  BLOCKED
+  COMPLETE
+}
+
+enum VestingType {
+  STANDARD_4Y_1Y_CLIFF
+  GRADED
+  MILESTONE
+  CUSTOM
+}
+
+enum VestingEventStatus {
+  PENDING
+  VESTED
+  FORFEITED
+}
+
+enum PaymentTerms {
+  NET_30
+  NET_60
+  MILESTONE
+  CUSTOM
+}
+
+enum PaymentCycleStatus {
+  UPCOMING
+  ACTIVE
+  OVERDUE
+  COMPLETED
+}
+
+enum ComplianceStatus {
+  UPCOMING
+  DUE_SOON
+  OVERDUE
+  COMPLETED
+}
+
+enum Jurisdiction {
+  UAE
+  US_DELAWARE
+  GLOBAL
+}
+
+enum UserRole {
+  PLATFORM_ADMIN
+  FINANCE_ADMIN
+  LEGAL_ADMIN
+  OPS_ADMIN
+  FSP_FINANCE
+  COMMERCIAL_OFFICER
+  TEAM_MEMBER
+  EXTERNAL_AUDITOR
+}
+
+// ─── Auth Models ─────────────────────────────────────────────────────────────
+
+model AppUser {
+  id            String   @id @default(uuid())
+  full_name     String
+  email         String   @unique
+  role          UserRole
+  password_hash String
+  is_active     Boolean  @default(true)
+  last_login_at DateTime?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  access_events     AuthAccessEvent[]
+  owned_documents   LegalDocument[]    @relation("DocumentOwner")
+  reported_issues   LegalIssue[]       @relation("IssueReporter")
+  assigned_issues   LegalIssue[]       @relation("IssueAssignee")
+  acknowledgments   PolicyAcknowledgment[]
+}
+
+model AuthAccessEvent {
+  id           String   @id @default(uuid())
+  app_user_id  String
+  event_type   String
+  event_status String
+  ip_address   String?
+  user_agent   String?
+  metadata     Json?
+  created_at   DateTime @default(now())
+
+  user AppUser @relation(fields: [app_user_id], references: [id])
+
+  @@index([app_user_id, created_at])
+}
+
+// ─── Legal Document Core ─────────────────────────────────────────────────────
+
+model LegalDocument {
+  id               String           @id @default(uuid())
+  title            String
+  category         DocumentCategory
+  lifecycle_status LifecycleStatus  @default(DRAFT)
+  parties          Json?
+  value            Decimal?
+  currency         String           @default("AED")
+  entity           Entity
+  owner_id         String
+  expiry_date      DateTime?
+  parent_doc_id    String?
+  signatories      Json?
+  notes            String?
+  finance_sponsor_id String?
+  created_at       DateTime         @default(now())
+  updated_at       DateTime         @updatedAt
+
+  owner              AppUser            @relation("DocumentOwner", fields: [owner_id], references: [id])
+  parent             LegalDocument?     @relation("DocumentAddenda", fields: [parent_doc_id], references: [id])
+  addenda            LegalDocument[]    @relation("DocumentAddenda")
+  versions           DocumentVersion[]
+  lifecycle_events   LifecycleEvent[]
+  signature_requests SignatureRequest[]
+  payment_cycles     PaymentCycle[]
+  email_threads      EmailThread[]
+  audit_documents    AuditDocument[]    @relation("DocumentAuditDocs")
+
+  @@index([entity, lifecycle_status])
+  @@index([expiry_date])
+  @@index([owner_id])
+}
+
+model DocumentVersion {
+  id              String   @id @default(uuid())
+  document_id     String
+  version_number  Int
+  file_url        String?
+  change_summary  String?
+  created_by      String
+  created_at      DateTime @default(now())
+
+  document LegalDocument @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@index([document_id, version_number])
+}
+
+model LifecycleEvent {
+  id              String          @id @default(uuid())
+  document_id     String
+  from_status     LifecycleStatus
+  to_status       LifecycleStatus
+  transitioned_by String
+  notes           String?
+  created_at      DateTime        @default(now())
+
+  document LegalDocument @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@index([document_id, created_at])
+}
+
+// ─── Signatures ──────────────────────────────────────────────────────────────
+
+model SignatureRequest {
+  id              String          @id @default(uuid())
+  document_id     String
+  signatory_name  String
+  signatory_email String
+  status          SignatureStatus @default(PENDING)
+  sent_at         DateTime?
+  signed_at       DateTime?
+  reminder_count  Int             @default(0)
+  stalled_reason  String?
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+
+  document LegalDocument @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@index([document_id, status])
+  @@index([status])
+}
+
+// ─── Templates ───────────────────────────────────────────────────────────────
+
+model ContractTemplate {
+  id          String           @id @default(uuid())
+  name        String
+  category    DocumentCategory
+  entity      Entity?
+  content     String
+  variables   Json
+  version     Int              @default(1)
+  usage_count Int              @default(0)
+  is_active   Boolean          @default(true)
+  created_at  DateTime         @default(now())
+  updated_at  DateTime         @updatedAt
+}
+
+// ─── Compliance ──────────────────────────────────────────────────────────────
+
+model ComplianceDeadline {
+  id                 String           @id @default(uuid())
+  title              String
+  description        String?
+  jurisdiction       Jurisdiction
+  category           String
+  deadline_date      DateTime
+  recurring          Boolean          @default(false)
+  recurrence_rule    String?
+  status             ComplianceStatus @default(UPCOMING)
+  linked_document_id String?
+  created_at         DateTime         @default(now())
+  updated_at         DateTime         @updatedAt
+
+  @@index([deadline_date, status])
+  @@index([jurisdiction])
+}
+
+// ─── ESOP & Equity ───────────────────────────────────────────────────────────
+
+model ESOPGrant {
+  id                 String      @id @default(uuid())
+  employee_name      String
+  employee_email     String?
+  grant_date         DateTime
+  total_shares       Int
+  vested_shares      Int         @default(0)
+  exercise_price     Decimal
+  vesting_type       VestingType
+  cliff_months       Int         @default(12)
+  vesting_months     Int         @default(48)
+  clawback_triggers  Json?
+  acceleration_events Json?
+  jp_split_ratio     Decimal?
+  legal_document_id  String?
+  created_at         DateTime    @default(now())
+  updated_at         DateTime    @updatedAt
+
+  vesting_events VestingEvent[]
+}
+
+model VestingEvent {
+  id              String             @id @default(uuid())
+  grant_id        String
+  vest_date       DateTime
+  shares_vesting  Int
+  status          VestingEventStatus @default(PENDING)
+  created_at      DateTime           @default(now())
+
+  grant ESOPGrant @relation(fields: [grant_id], references: [id], onDelete: Cascade)
+
+  @@index([grant_id, vest_date])
+}
+
+// ─── Policies ────────────────────────────────────────────────────────────────
+
+model PolicyDocument {
+  id                     String   @id @default(uuid())
+  title                  String
+  version                Int      @default(1)
+  effective_date         DateTime
+  category               String
+  content                String?
+  file_url               String?
+  acknowledgment_required Boolean @default(true)
+  created_at             DateTime @default(now())
+  updated_at             DateTime @updatedAt
+
+  acknowledgments PolicyAcknowledgment[]
+}
+
+model PolicyAcknowledgment {
+  id              String   @id @default(uuid())
+  policy_id       String
+  user_id         String
+  acknowledged_at DateTime @default(now())
+
+  policy PolicyDocument @relation(fields: [policy_id], references: [id], onDelete: Cascade)
+  user   AppUser        @relation(fields: [user_id], references: [id])
+
+  @@unique([policy_id, user_id])
+}
+
+// ─── Issues ──────────────────────────────────────────────────────────────────
+
+model LegalIssue {
+  id               String        @id @default(uuid())
+  title            String
+  description      String
+  category         IssueCategory
+  reporter_id      String
+  assigned_to      String?
+  priority         Priority
+  sla_deadline     DateTime
+  status           IssueStatus   @default(OPEN)
+  resolution       String?
+  escalation_level Int           @default(0)
+  created_at       DateTime      @default(now())
+  updated_at       DateTime      @updatedAt
+
+  reporter AppUser  @relation("IssueReporter", fields: [reporter_id], references: [id])
+  assignee AppUser? @relation("IssueAssignee", fields: [assigned_to], references: [id])
+
+  @@index([status, sla_deadline])
+  @@index([category, priority])
+}
+
+// ─── Tracker ─────────────────────────────────────────────────────────────────
+
+model TrackerItem {
+  id              String          @id @default(uuid())
+  ref_code        String          @unique
+  title           String
+  category        TrackerCategory
+  priority        Priority
+  status          TrackerStatus   @default(NOT_STARTED)
+  assigned_to     String?
+  dependency_refs String[]
+  due_date        DateTime?
+  notes           String?
+  blocking_notes  String?
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+
+  @@index([category, priority])
+  @@index([status])
+}
+
+// ─── Payment Cycles ──────────────────────────────────────────────────────────
+
+model PaymentCycle {
+  id              String             @id @default(uuid())
+  document_id     String
+  terms           PaymentTerms
+  custom_terms    String?
+  amount          Decimal
+  currency        String             @default("AED")
+  cycle_start     DateTime?
+  cycle_end       DateTime?
+  status          PaymentCycleStatus @default(UPCOMING)
+  finance_sync_id String?
+  last_sync_at    DateTime?
+  created_at      DateTime           @default(now())
+  updated_at      DateTime           @updatedAt
+
+  document LegalDocument @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@index([document_id])
+  @@index([status])
+}
+
+// ─── Shared / Cross-Module ───────────────────────────────────────────────────
+
+model AuditDocument {
+  id                 String   @id @default(uuid())
+  file_url           String
+  file_type          String
+  uploaded_by        String
+  uploaded_at        DateTime @default(now())
+  linked_entity_type String
+  linked_entity_id   String
+  created_at         DateTime @default(now())
+
+  legal_document_id String?
+  legal_document    LegalDocument? @relation("DocumentAuditDocs", fields: [legal_document_id], references: [id])
+
+  @@index([linked_entity_type, linked_entity_id])
+}
+
+model EmailThread {
+  id               String   @id @default(uuid())
+  subject          String
+  participants     Json
+  document_id      String?
+  last_activity_at DateTime
+  messages         Json?
+  created_at       DateTime @default(now())
+
+  document LegalDocument? @relation(fields: [document_id], references: [id])
+
+  @@index([document_id])
+}
+
+model CalendarEvent {
+  id                 String   @id @default(uuid())
+  title              String
+  event_type         String
+  start_date         DateTime
+  end_date           DateTime?
+  entity             Entity?
+  linked_entity_type String?
+  linked_entity_id   String?
+  created_at         DateTime @default(now())
+
+  @@index([start_date])
+  @@index([entity])
+}
+
+model CrossModuleEvent {
+  id          String   @id @default(uuid())
+  source      String
+  event_type  String
+  entity_type String
+  entity_id   String
+  payload     Json
+  processed   Boolean  @default(false)
+  created_at  DateTime @default(now())
+
+  @@index([source, processed])
+  @@index([created_at])
 }
