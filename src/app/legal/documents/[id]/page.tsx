@@ -27,7 +27,10 @@ import {
   Users,
   StickyNote,
   ArrowRight,
+  ExternalLink,
 } from "lucide-react"
+import { NotesPanel } from "@/components/legal/notes-panel"
+import { CommentsPanel } from "@/components/legal/comments-panel"
 import type { SignatureStatus } from "@/generated/prisma/client"
 
 const SIGNATURE_STATUS_COLORS: Record<SignatureStatus, string> = {
@@ -62,6 +65,14 @@ export default async function DocumentDetailPage({
       lifecycle_events: {
         orderBy: { created_at: "desc" },
       },
+      notes_entries: {
+        orderBy: { created_at: "desc" },
+        include: { author: { select: { full_name: true } } },
+      },
+      comments: {
+        orderBy: { created_at: "desc" },
+        include: { author: { select: { full_name: true } } },
+      },
     },
   })
 
@@ -79,7 +90,14 @@ export default async function DocumentDetailPage({
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold">{document.title}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold">{document.title}</h1>
+            {document.file_url && (
+              <a href={document.file_url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary" title="Open file">
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <LifecycleBadge status={document.lifecycle_status} />
             <Badge variant="outline">{entityLabel}</Badge>
@@ -106,7 +124,8 @@ export default async function DocumentDetailPage({
           <TabsTrigger value={0}>Overview</TabsTrigger>
           <TabsTrigger value={1}>Versions</TabsTrigger>
           <TabsTrigger value={2}>Signatures</TabsTrigger>
-          <TabsTrigger value={3}>Audit Trail</TabsTrigger>
+          <TabsTrigger value={3}>Comments</TabsTrigger>
+          <TabsTrigger value={4}>Audit Trail</TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
@@ -188,13 +207,12 @@ export default async function DocumentDetailPage({
                 <StickyNote className="h-4 w-4 text-muted-foreground" />
                 <h3 className="text-base font-semibold">Notes</h3>
               </div>
-              {document.notes ? (
-                <p className="text-sm text-foreground/80 whitespace-pre-wrap">
+              {document.notes && (
+                <p className="text-sm text-foreground/80 whitespace-pre-wrap mb-4">
                   {document.notes}
                 </p>
-              ) : (
-                <p className="text-sm text-muted-foreground">No notes.</p>
               )}
+              <NotesPanel documentId={document.id} notes={document.notes_entries} />
             </div>
           </div>
         </TabsContent>
@@ -224,7 +242,13 @@ export default async function DocumentDetailPage({
                     {document.versions.map((v) => (
                       <TableRow key={v.id}>
                         <TableCell className="font-figures font-medium">
-                          v{v.version_number}
+                          {v.file_url ? (
+                            <a href={v.file_url} target="_blank" rel="noopener noreferrer" className="hover:underline text-primary" title={`Download v${v.version_number}`}>
+                              v{v.version_number}
+                            </a>
+                          ) : (
+                            <>v{v.version_number}</>
+                          )}
                         </TableCell>
                         <TableCell>
                           {v.change_summary ?? "No summary"}
@@ -292,8 +316,15 @@ export default async function DocumentDetailPage({
           </div>
         </TabsContent>
 
-        {/* Audit Trail Tab */}
+        {/* Comments Tab */}
         <TabsContent value={3}>
+          <div className="mt-4 rounded-xl border border-border/50 bg-card p-6">
+            <CommentsPanel documentId={document.id} comments={document.comments} />
+          </div>
+        </TabsContent>
+
+        {/* Audit Trail Tab */}
+        <TabsContent value={4}>
           <div className="mt-4">
             {document.lifecycle_events.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card py-12">

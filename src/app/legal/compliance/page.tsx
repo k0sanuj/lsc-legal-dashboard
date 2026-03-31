@@ -8,6 +8,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  CardDescription,
 } from "@/components/ui/card"
 import {
   Table,
@@ -18,8 +19,9 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { AlertCircle, ShieldCheck } from "lucide-react"
-import type { ComplianceStatus, Jurisdiction } from "@/generated/prisma/client"
+import { AlertCircle, ShieldCheck, Inbox } from "lucide-react"
+import { IncomingNoticeForm } from "@/components/legal/incoming-notice-form"
+import type { ComplianceStatus, Jurisdiction, NoticeStatus } from "@/generated/prisma/client"
 
 const STATUS_STYLES: Record<ComplianceStatus, string> = {
   UPCOMING: "bg-blue-500/10 text-blue-400 border-blue-500/20",
@@ -46,6 +48,12 @@ export default async function CompliancePage() {
 
   const deadlines = await prisma.complianceDeadline.findMany({
     orderBy: { deadline_date: "asc" },
+  })
+
+  const notices = await prisma.incomingNotice.findMany({
+    orderBy: { received_at: "desc" },
+    take: 20,
+    include: { assignee: { select: { full_name: true } } },
   })
 
   const overdueCount = deadlines.filter((d) => d.status === "OVERDUE").length
@@ -175,6 +183,80 @@ export default async function CompliancePage() {
               </TabsContent>
             ))}
           </Tabs>
+        </CardContent>
+      </Card>
+
+      {/* Incoming Notices */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Inbox className="h-4 w-4" />
+                Incoming Notices
+              </CardTitle>
+              <CardDescription>
+                Legal notices, complaints, and regulatory communications
+              </CardDescription>
+            </div>
+            <IncomingNoticeForm />
+          </div>
+        </CardHeader>
+        <CardContent>
+          {notices.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Inbox className="h-10 w-10 text-muted-foreground/40" />
+              <h3 className="mt-4 text-sm font-medium">No incoming notices</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                No notices have been logged yet.
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Subject</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>From</TableHead>
+                  <TableHead>Received</TableHead>
+                  <TableHead>Assigned To</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {notices.map((notice) => (
+                  <TableRow key={notice.id}>
+                    <TableCell className="font-medium">{notice.subject}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">
+                        {notice.category.replace(/_/g, " ")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {notice.from_email ?? "\u2014"}
+                    </TableCell>
+                    <TableCell>{formatDate(notice.received_at)}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {notice.assignee?.full_name ?? "\u2014"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          notice.status === "NEW" && "bg-blue-500/10 text-blue-400 border-blue-500/20",
+                          notice.status === "ACKNOWLEDGED" && "bg-amber-500/10 text-amber-400 border-amber-500/20",
+                          notice.status === "IN_PROGRESS" && "bg-violet-500/10 text-violet-400 border-violet-500/20",
+                          notice.status === "RESOLVED" && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                        )}
+                      >
+                        {notice.status.replace(/_/g, " ")}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

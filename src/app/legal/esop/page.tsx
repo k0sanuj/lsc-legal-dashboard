@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/prisma"
 import { requireSession } from "@/lib/auth"
 import { formatAED, formatDate } from "@/lib/constants"
+import { ENTITIES } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import Link from "next/link"
 import {
   Card,
   CardContent,
@@ -36,10 +38,14 @@ const VESTING_COLORS: Record<VestingType, string> = {
   CUSTOM: "bg-slate-400/10 text-slate-400 border-slate-400/20",
 }
 
-export default async function ESOPPage() {
+export default async function ESOPPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireSession()
 
+  const params = await searchParams
+  const entityFilter = typeof params.entity === 'string' ? params.entity : undefined
+
   const grants = await prisma.eSOPGrant.findMany({
+    where: entityFilter ? { entity: entityFilter as any } : undefined,
     orderBy: { grant_date: "desc" },
     include: {
       vesting_events: {
@@ -129,6 +135,14 @@ export default async function ESOPPage() {
         })}
       </div>
 
+      {/* Entity filter */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Link href="/legal/esop" className={cn("px-3 py-1.5 rounded-md text-sm transition-colors", !entityFilter && "bg-primary/10 text-primary font-medium")}>All</Link>
+        {ENTITIES.map((e) => (
+          <Link key={e.value} href={`/legal/esop?entity=${e.value}`} className={cn("px-3 py-1.5 rounded-md text-sm transition-colors", entityFilter === e.value ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground")}>{e.label}</Link>
+        ))}
+      </div>
+
       {/* Grants table */}
       <Card>
         <CardHeader>
@@ -151,6 +165,7 @@ export default async function ESOPPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Employee</TableHead>
+                  <TableHead>Entity</TableHead>
                   <TableHead>Grant Date</TableHead>
                   <TableHead className="text-right">Total Shares</TableHead>
                   <TableHead className="text-right">Vested %</TableHead>
@@ -182,6 +197,7 @@ export default async function ESOPPage() {
                           </div>
                         )}
                       </TableCell>
+                      <TableCell><Badge variant="outline">{grant.entity}</Badge></TableCell>
                       <TableCell>{formatDate(grant.grant_date)}</TableCell>
                       <TableCell className="text-right tabular-nums">
                         {grant.total_shares.toLocaleString()}

@@ -67,6 +67,11 @@ export const PAGE_PERMISSIONS: Record<string, UserRole[]> = {
   ],
   "/legal/tracker": ADMIN_ROLES,
   "/legal/payment-cycles": ADMIN_ROLES,
+  "/legal/documents/review": [
+    "PLATFORM_ADMIN",
+    "LEGAL_ADMIN",
+    "OPS_ADMIN",
+  ],
 }
 
 export function canAccessPage(role: UserRole, path: string): boolean {
@@ -97,6 +102,7 @@ export const NAV_ITEMS: NavItem[] = [
 
   // Documents
   { label: "Documents", href: "/legal/documents", icon: "FileText", group: "Documents" },
+  { label: "Review Queue", href: "/legal/documents/review", icon: "MessageSquare", group: "Documents" },
   { label: "Signatures", href: "/legal/signatures", icon: "PenTool", group: "Documents" },
   { label: "Templates", href: "/legal/templates", icon: "LayoutTemplate", group: "Documents" },
   { label: "AI Generator", href: "/legal/generate", icon: "Sparkles", group: "Documents" },

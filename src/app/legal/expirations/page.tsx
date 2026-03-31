@@ -18,7 +18,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { AlertTriangle, Clock, CalendarDays, ShieldAlert } from "lucide-react"
+import { AlertTriangle, Clock, CalendarDays, ShieldAlert, ExternalLink } from "lucide-react"
+import Link from "next/link"
 
 function getEntityLabel(value: string): string {
   return ENTITIES.find((e) => e.value === value)?.label ?? value
@@ -169,7 +170,14 @@ export default async function ExpirationsPage() {
                       className={urgencyClass(days)}
                     >
                       <TableCell className="font-medium">
-                        {doc.title}
+                        <Link href={`/legal/documents/${doc.id}`} className="hover:underline">
+                          {doc.title}
+                        </Link>
+                        {doc.file_url && (
+                          <a href={doc.file_url} target="_blank" rel="noopener noreferrer" className="ml-1.5 text-muted-foreground hover:text-primary inline-block" title="Open file">
+                            <ExternalLink className="h-3 w-3 inline" />
+                          </a>
+                        )}
                       </TableCell>
                       <TableCell>{getEntityLabel(doc.entity)}</TableCell>
                       <TableCell>

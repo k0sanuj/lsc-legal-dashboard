@@ -1,82 +1,49 @@
-"use client"
+import { prisma } from "@/lib/prisma"
+import { requireRole } from "@/lib/auth"
+import { ENTITIES } from "@/lib/constants"
+import { Sparkles } from "lucide-react"
+import { GenerateForm } from "./generate-form"
 
-import { useState, useTransition } from "react"
-import { generateContract } from "@/actions/generate"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
-import {
-  Sparkles,
-  FileText,
-  Building2,
-  Variable,
-  Loader2,
-  Copy,
-  Check,
-} from "lucide-react"
-
-const PLACEHOLDER_TEMPLATES = [
-  { id: "nda-standard", name: "Standard NDA" },
-  { id: "sponsorship-agreement", name: "Sponsorship Agreement" },
-  { id: "vendor-contract", name: "Vendor Contract" },
-  { id: "employment-offer", name: "Employment Offer Letter" },
-  { id: "arena-host", name: "Arena Host Agreement" },
-]
-
-const ENTITIES = [
-  { value: "LSC", label: "League Sports Co" },
-  { value: "TBR", label: "Team Blue Rising" },
-  { value: "FSP", label: "Future of Sports" },
-]
-
-const PLACEHOLDER_VARIABLES = [
+const DEFAULT_VARIABLES = [
   { key: "counterparty", label: "Counterparty Name", placeholder: "e.g. Acme Corp" },
   { key: "effective_date", label: "Effective Date", placeholder: "e.g. 2026-04-01" },
   { key: "term_months", label: "Term (months)", placeholder: "e.g. 12" },
   { key: "value", label: "Contract Value (AED)", placeholder: "e.g. 50000" },
 ]
 
-export default function GeneratePage() {
-  const [templateId, setTemplateId] = useState("")
-  const [entity, setEntity] = useState("")
-  const [variables, setVariables] = useState<Record<string, string>>({})
-  const [draft, setDraft] = useState("")
-  const [copied, setCopied] = useState(false)
-  const [isPending, startTransition] = useTransition()
+export default async function GeneratePage() {
+  await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
 
-  function handleVariableChange(key: string, value: string) {
-    setVariables((prev) => ({ ...prev, [key]: value }))
+  const dbTemplates = await prisma.contractTemplate.findMany({
+    where: { is_active: true },
+    orderBy: { name: "asc" },
+    select: {
+      id: true,
+      name: true,
+      category: true,
+      variables: true,
+    },
+  })
+
+  const templates = dbTemplates.map((t) => ({
+    id: t.id,
+    name: t.name,
+    category: t.category,
+    variables: Array.isArray(t.variables) ? (t.variables as { key: string; label: string; placeholder: string }[]) : DEFAULT_VARIABLES,
+  }))
+
+  // If no templates in DB, provide defaults
+  if (templates.length === 0) {
+    templates.push(
+      { id: "nda-standard", name: "Standard NDA", category: "NDA", variables: DEFAULT_VARIABLES },
+      { id: "sponsorship-agreement", name: "Sponsorship Agreement", category: "SPONSORSHIP", variables: DEFAULT_VARIABLES },
+      { id: "vendor-contract", name: "Vendor Contract", category: "VENDOR", variables: DEFAULT_VARIABLES },
+      { id: "employment-offer", name: "Employment Offer Letter", category: "EMPLOYMENT", variables: DEFAULT_VARIABLES },
+      { id: "arena-host", name: "Arena Host Agreement", category: "ARENA_HOST", variables: DEFAULT_VARIABLES },
+    )
   }
 
-  function handleGenerate() {
-    if (!templateId || !entity) return
-    startTransition(async () => {
-      const result = await generateContract(templateId, variables, entity)
-      if (result.success) {
-        setDraft(result.draft)
-      }
-    })
-  }
-
-  async function handleCopy() {
-    await navigator.clipboard.writeText(draft)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
+  const entities = ENTITIES.map((e) => ({ value: e.value, label: e.label }))
 
   return (
     <div className="space-y-6">
@@ -94,161 +61,7 @@ export default function GeneratePage() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Configuration Panel */}
-        <div className="space-y-4">
-          {/* Template Selector */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="size-4" />
-                Template
-              </CardTitle>
-              <CardDescription>Select a contract template to start</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Select value={templateId} onValueChange={(v) => setTemplateId(v ?? "")}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Choose a template..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {PLACEHOLDER_TEMPLATES.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </CardContent>
-          </Card>
-
-          {/* Entity Selector */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Building2 className="size-4" />
-                Entity
-              </CardTitle>
-              <CardDescription>Which entity is this contract for?</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Select value={entity} onValueChange={(v) => setEntity(v ?? "")}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select entity..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {ENTITIES.map((e) => (
-                    <SelectItem key={e.value} value={e.value}>
-                      {e.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </CardContent>
-          </Card>
-
-          {/* Variables */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Variable className="size-4" />
-                Variables
-              </CardTitle>
-              <CardDescription>Fill in contract-specific values</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {PLACEHOLDER_VARIABLES.map((v) => (
-                <div key={v.key} className="space-y-1">
-                  <label
-                    htmlFor={v.key}
-                    className="text-xs font-medium text-muted-foreground"
-                  >
-                    {v.label}
-                  </label>
-                  <Input
-                    id={v.key}
-                    placeholder={v.placeholder}
-                    value={variables[v.key] ?? ""}
-                    onChange={(e) =>
-                      handleVariableChange(v.key, e.target.value)
-                    }
-                  />
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          {/* Generate Button */}
-          <Button
-            className="w-full bg-linear-to-r from-violet-600 to-purple-600 text-white hover:from-violet-700 hover:to-purple-700"
-            size="lg"
-            disabled={!templateId || !entity || isPending}
-            onClick={handleGenerate}
-          >
-            {isPending ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Generating...
-              </>
-            ) : (
-              <>
-                <Sparkles className="size-4" />
-                Generate Draft
-              </>
-            )}
-          </Button>
-        </div>
-
-        {/* Preview Panel */}
-        <div>
-          <Card className="min-h-100">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="size-4" />
-                  Preview
-                  {draft && (
-                    <Badge
-                      variant="secondary"
-                      className="bg-violet-500/10 text-violet-400"
-                    >
-                      AI Draft
-                    </Badge>
-                  )}
-                </CardTitle>
-                {draft && (
-                  <Button variant="ghost" size="sm" onClick={handleCopy}>
-                    {copied ? (
-                      <Check className="size-3.5 text-emerald-400" />
-                    ) : (
-                      <Copy className="size-3.5" />
-                    )}
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {draft ? (
-                <pre className="whitespace-pre-wrap rounded-lg bg-muted/50 p-4 font-mono text-xs leading-relaxed">
-                  {draft}
-                </pre>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-linear-to-br from-violet-500/20 to-purple-600/20">
-                    <Sparkles className="size-5 text-violet-400" />
-                  </div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    No draft generated yet
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Select a template, entity, and fill in variables, then click Generate
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      <GenerateForm templates={templates} entities={entities} />
     </div>
   )
 }

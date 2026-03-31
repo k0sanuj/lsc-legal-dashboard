@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { FileText } from "lucide-react"
+import { FileText, ExternalLink } from "lucide-react"
 
 export default async function PoliciesPage() {
   await requireSession()
@@ -80,6 +80,7 @@ export default async function PoliciesPage() {
                   <TableHead>Effective Date</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Acknowledgment Rate</TableHead>
+                  <TableHead>Document</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -147,6 +148,21 @@ export default async function PoliciesPage() {
                           <span className="text-xs text-muted-foreground">
                             Not required
                           </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {policy.file_url ? (
+                          <a
+                            href={policy.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-primary hover:underline text-sm"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            View
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground">&mdash;</span>
                         )}
                       </TableCell>
                     </TableRow>

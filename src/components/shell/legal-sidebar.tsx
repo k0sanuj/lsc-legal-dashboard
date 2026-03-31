@@ -15,6 +15,7 @@ import {
   BookOpen,
   AlertCircle,
   ListChecks,
+  MessageSquare,
   Scale,
   LogOut,
   ChevronLeft,
@@ -38,6 +39,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   BookOpen,
   AlertCircle,
   ListChecks,
+  MessageSquare,
 }
 
 interface LegalSidebarProps {

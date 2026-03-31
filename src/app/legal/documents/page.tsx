@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { FileText, Search } from "lucide-react"
+import { FileText, Search, ExternalLink } from "lucide-react"
 import Link from "next/link"
 import type { LifecycleStatus, Entity } from "@/generated/prisma/client"
 
@@ -62,6 +62,7 @@ export default async function DocumentsListPage({
         value: true,
         expiry_date: true,
         updated_at: true,
+        file_url: true,
       },
     })
 
@@ -142,6 +143,11 @@ export default async function DocumentsListPage({
                       >
                         {doc.title}
                       </Link>
+                      {doc.file_url && (
+                        <a href={doc.file_url} target="_blank" rel="noopener noreferrer" className="ml-1 text-muted-foreground hover:text-primary" title="Open file">
+                          <ExternalLink className="h-3 w-3 inline" />
+                        </a>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">

@@ -2,10 +2,12 @@
 
 import { usePathname } from "next/navigation"
 import { ChevronRight } from "lucide-react"
+import { NotificationBell } from "./notification-bell"
 
 const ROUTE_LABELS: Record<string, string> = {
   "/legal": "Command Center",
   "/legal/documents": "Documents",
+  "/legal/documents/review": "Review Queue",
   "/legal/signatures": "Signatures",
   "/legal/generate": "AI Generator",
   "/legal/templates": "Templates",
@@ -18,7 +20,11 @@ const ROUTE_LABELS: Record<string, string> = {
   "/legal/payment-cycles": "Payment Cycles",
 }
 
-export function LegalTopbar() {
+interface LegalTopbarProps {
+  userId?: string
+}
+
+export function LegalTopbar({ userId }: LegalTopbarProps) {
   const pathname = usePathname()
 
   // Build breadcrumb segments
@@ -29,7 +35,7 @@ export function LegalTopbar() {
     "Legal"
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/80 backdrop-blur-sm px-6">
+    <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-border bg-background/80 backdrop-blur-sm px-6">
       <nav className="flex items-center gap-1.5 text-sm">
         <span className="text-muted-foreground">Legal</span>
         {pathname !== "/legal" && (
@@ -45,6 +51,9 @@ export function LegalTopbar() {
           </>
         )}
       </nav>
+      <div className="flex items-center gap-2">
+        {userId && <NotificationBell userId={userId} />}
+      </div>
     </header>
   )
 }

@@ -166,6 +166,10 @@ model AppUser {
   reported_issues   LegalIssue[]       @relation("IssueReporter")
   assigned_issues   LegalIssue[]       @relation("IssueAssignee")
   acknowledgments   PolicyAcknowledgment[]
+  document_notes    DocumentNote[]     @relation("NoteAuthor")
+  document_comments DocumentComment[]  @relation("CommentAuthor")
+  notifications     Notification[]
+  assigned_notices  IncomingNotice[]   @relation("NoticeAssignee")
 }
 
 model AuthAccessEvent {
@@ -199,6 +203,7 @@ model LegalDocument {
   parent_doc_id    String?
   signatories      Json?
   notes            String?
+  file_url         String?
   finance_sponsor_id String?
   created_at       DateTime         @default(now())
   updated_at       DateTime         @updatedAt
@@ -212,6 +217,8 @@ model LegalDocument {
   payment_cycles     PaymentCycle[]
   email_threads      EmailThread[]
   audit_documents    AuditDocument[]    @relation("DocumentAuditDocs")
+  notes_entries      DocumentNote[]
+  comments           DocumentComment[]
 
   @@index([entity, lifecycle_status])
   @@index([expiry_date])
@@ -309,6 +316,7 @@ model ESOPGrant {
   id                 String      @id @default(uuid())
   employee_name      String
   employee_email     String?
+  entity             Entity      @default(LSC)
   grant_date         DateTime
   total_shares       Int
   vested_shares      Int         @default(0)
@@ -495,4 +503,88 @@ model CrossModuleEvent {
 
   @@index([source, processed])
   @@index([created_at])
+}
+
+// ─── Document Notes & Comments ───────────────────────────────────────────────
+
+model DocumentNote {
+  id          String   @id @default(uuid())
+  document_id String
+  content     String
+  author_id   String
+  created_at  DateTime @default(now())
+
+  document LegalDocument @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  author   AppUser       @relation("NoteAuthor", fields: [author_id], references: [id])
+
+  @@index([document_id, created_at])
+}
+
+model DocumentComment {
+  id          String   @id @default(uuid())
+  document_id String
+  content     String
+  author_id   String
+  resolved    Boolean  @default(false)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  document LegalDocument @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  author   AppUser       @relation("CommentAuthor", fields: [author_id], references: [id])
+
+  @@index([document_id, created_at])
+}
+
+// ─── Notifications ───────────────────────────────────────────────────────────
+
+model Notification {
+  id         String   @id @default(uuid())
+  user_id    String
+  type       String
+  title      String
+  message    String
+  link       String?
+  read       Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  user AppUser @relation(fields: [user_id], references: [id])
+
+  @@index([user_id, read, created_at])
+}
+
+// ─── Incoming Notices (Compliance) ───────────────────────────────────────────
+
+enum NoticeCategory {
+  DATA_PROTECTION
+  COMPLAINT
+  LEGAL_NOTICE
+  REGULATORY
+  OTHER
+}
+
+enum NoticeStatus {
+  NEW
+  ACKNOWLEDGED
+  IN_PROGRESS
+  RESOLVED
+}
+
+model IncomingNotice {
+  id              String         @id @default(uuid())
+  subject         String
+  from_email      String?
+  body            String?
+  category        NoticeCategory
+  received_at     DateTime       @default(now())
+  status          NoticeStatus   @default(NEW)
+  assigned_to     String?
+  forwarded_to    Json?
+  linked_issue_id String?
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+
+  assignee AppUser? @relation("NoticeAssignee", fields: [assigned_to], references: [id])
+
+  @@index([status, received_at])
+  @@index([category])
 }

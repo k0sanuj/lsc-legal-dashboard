@@ -13,7 +13,7 @@ export default async function LegalLayout({
     <div className="flex min-h-screen">
       <LegalSidebar userRole={session.role} userName={session.fullName} />
       <div className="flex flex-1 flex-col pl-64">
-        <LegalTopbar />
+        <LegalTopbar userId={session.userId} />
         <main className="flex-1 p-6">{children}</main>
       </div>
     </div>
