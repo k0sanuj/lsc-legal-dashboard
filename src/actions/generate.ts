@@ -27,7 +27,7 @@ export async function generateContract(
   entity: string,
   reference?: string
 ) {
-  await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+  await requireRole(['PLATFORM_ADMIN', 'FINANCE_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
 
   let templateContent = ''
   let templateName = templateId
@@ -99,7 +99,7 @@ export async function refineContract(
   currentDraft: string,
   instruction: string
 ) {
-  await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+  await requireRole(['PLATFORM_ADMIN', 'FINANCE_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
 
   try {
     const model = genAI.getGenerativeModel({

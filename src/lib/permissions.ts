@@ -29,8 +29,8 @@ export const PAGE_PERMISSIONS: Record<string, UserRole[]> = {
   "/legal/documents": ALL_ROLES,
   "/legal/documents/[id]": ALL_ROLES,
   "/legal/signatures": ADMIN_ROLES,
-  "/legal/generate": LEGAL_WRITE_ROLES,
-  "/legal/templates": LEGAL_WRITE_ROLES,
+  "/legal/generate": ADMIN_ROLES,
+  "/legal/templates": ADMIN_ROLES,
   "/legal/expirations": [
     "PLATFORM_ADMIN",
     "FINANCE_ADMIN",

@@ -12,7 +12,7 @@ const DEFAULT_VARIABLES = [
 ]
 
 export default async function GeneratePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  await requireRole(["PLATFORM_ADMIN", "FINANCE_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
   const params = await searchParams
   const preselectedTemplate = typeof params.template === 'string' ? params.template : undefined
 
