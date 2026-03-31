@@ -48,6 +48,12 @@ export const PAGE_PERMISSIONS: Record<string, UserRole[]> = {
     "LEGAL_ADMIN",
     "OPS_ADMIN",
   ],
+  "/legal/esop/[id]": [
+    "PLATFORM_ADMIN",
+    "FINANCE_ADMIN",
+    "LEGAL_ADMIN",
+    "OPS_ADMIN",
+  ],
   "/legal/policies": [
     "PLATFORM_ADMIN",
     "FINANCE_ADMIN",

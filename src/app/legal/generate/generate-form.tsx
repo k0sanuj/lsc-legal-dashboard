@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { generateContract, saveGeneratedDocument } from '@/actions/generate'
+import { generateContract, refineContract, saveGeneratedDocument, saveAsTemplate } from '@/actions/generate'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Card,
   CardContent,
@@ -19,6 +20,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import {
   Sparkles,
@@ -29,6 +38,10 @@ import {
   Copy,
   Check,
   Save,
+  MessageSquare,
+  Send,
+  BookmarkPlus,
+  LinkIcon,
 } from 'lucide-react'
 
 interface Template {
@@ -43,24 +56,47 @@ interface Entity {
   label: string
 }
 
+interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 interface GenerateFormProps {
   templates: Template[]
   entities: Entity[]
+  preselectedTemplateId?: string
 }
 
-export function GenerateForm({ templates, entities }: GenerateFormProps) {
+export function GenerateForm({ templates, entities, preselectedTemplateId }: GenerateFormProps) {
   const router = useRouter()
-  const [templateId, setTemplateId] = useState('')
+  const [templateId, setTemplateId] = useState(preselectedTemplateId ?? '')
   const [entity, setEntity] = useState('')
+  const [reference, setReference] = useState('')
   const [variables, setVariables] = useState<Record<string, string>>({})
   const [draft, setDraft] = useState('')
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
   const [isPending, startTransition] = useTransition()
   const [isSaving, startSaveTransition] = useTransition()
+  const [isRefining, startRefineTransition] = useTransition()
+
+  // Chat refinement
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [showChat, setShowChat] = useState(false)
+  const chatEndRef = useRef<HTMLDivElement>(null)
+
+  // Save as template dialog
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
+  const [newTemplateName, setNewTemplateName] = useState('')
+  const [isSavingTemplate, startSaveTemplateTransition] = useTransition()
 
   const selectedTemplate = templates.find((t) => t.id === templateId)
   const templateVars = selectedTemplate?.variables ?? []
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages])
 
   function handleVariableChange(key: string, value: string) {
     setVariables((prev) => ({ ...prev, [key]: value }))
@@ -69,8 +105,10 @@ export function GenerateForm({ templates, entities }: GenerateFormProps) {
   function handleGenerate() {
     if (!templateId || !entity) return
     setError('')
+    setChatMessages([])
+    setShowChat(false)
     startTransition(async () => {
-      const result = await generateContract(templateId, variables, entity)
+      const result = await generateContract(templateId, variables, entity, reference || undefined)
       if (result.success) {
         setDraft(result.draft)
       } else {
@@ -88,16 +126,64 @@ export function GenerateForm({ templates, entities }: GenerateFormProps) {
   function handleSave() {
     if (!draft || !entity || !selectedTemplate) return
     startSaveTransition(async () => {
-      const title = `${selectedTemplate.name} - ${variables.counterparty || entity} - Draft`
+      const title = `${selectedTemplate.name} - ${variables.counterparty || variables.name || entity} - Draft`
       const result = await saveGeneratedDocument(
         title,
         entity,
         selectedTemplate.category,
         draft,
-        variables
+        variables,
+        reference || undefined
       )
       if (result.success) {
         router.push(`/legal/documents/${result.documentId}`)
+      }
+    })
+  }
+
+  function handleSendChat() {
+    if (!chatInput.trim() || !draft) return
+    const instruction = chatInput.trim()
+    setChatInput('')
+    setChatMessages((prev) => [...prev, { role: 'user', content: instruction }])
+
+    startRefineTransition(async () => {
+      const result = await refineContract(draft, instruction)
+      if (result.success) {
+        setDraft(result.draft)
+        setChatMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: 'Done — contract updated.' },
+        ])
+      } else {
+        setChatMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: `Error: ${result.error}` },
+        ])
+      }
+    })
+  }
+
+  function handleSaveAsTemplate() {
+    if (!newTemplateName.trim() || !draft || !selectedTemplate) return
+    startSaveTemplateTransition(async () => {
+      const result = await saveAsTemplate(
+        newTemplateName.trim(),
+        selectedTemplate.category,
+        entity || null,
+        draft,
+        templateVars.length > 0
+          ? templateVars
+          : [
+              { key: 'name', label: 'Counterparty Name', placeholder: 'e.g. Acme Corp' },
+              { key: 'email', label: 'Email', placeholder: 'e.g. contact@acme.com' },
+              { key: 'address', label: 'Address', placeholder: 'e.g. Dubai, UAE' },
+              { key: 'term_months', label: 'Term (months)', placeholder: 'e.g. 12' },
+            ]
+      )
+      if (result.success) {
+        setTemplateDialogOpen(false)
+        setNewTemplateName('')
       }
     })
   }
@@ -156,14 +242,32 @@ export function GenerateForm({ templates, entities }: GenerateFormProps) {
           </CardContent>
         </Card>
 
-        {/* Variables */}
+        {/* Reference */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <LinkIcon className="size-4" />
+              Reference
+            </CardTitle>
+            <CardDescription>Internal reference or deal note (optional)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Input
+              placeholder="e.g. Deal #1042, Board approval 2026-03-15"
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Variables — the fields that change per counterparty */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Variable className="size-4" />
-              Variables
+              Counterparty Details
             </CardTitle>
-            <CardDescription>Fill in contract-specific values</CardDescription>
+            <CardDescription>Fill in the fields that change per document</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {templateVars.length > 0 ? (
@@ -182,7 +286,7 @@ export function GenerateForm({ templates, entities }: GenerateFormProps) {
               ))
             ) : (
               <p className="text-sm text-muted-foreground">
-                {templateId ? 'No variables for this template' : 'Select a template first'}
+                {templateId ? 'No variable fields for this template' : 'Select a template first'}
               </p>
             )}
           </CardContent>
@@ -213,8 +317,8 @@ export function GenerateForm({ templates, entities }: GenerateFormProps) {
         )}
       </div>
 
-      {/* Preview Panel */}
-      <div>
+      {/* Preview + Chat Panel */}
+      <div className="space-y-4">
         <Card className="min-h-100">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -239,6 +343,64 @@ export function GenerateForm({ templates, entities }: GenerateFormProps) {
                   <Button
                     variant="ghost"
                     size="sm"
+                    onClick={() => setShowChat(!showChat)}
+                    title="Refine with AI"
+                  >
+                    <MessageSquare className="size-3.5" />
+                  </Button>
+
+                  {/* Save as Template */}
+                  <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+                    <DialogTrigger
+                      render={<Button variant="ghost" size="sm" title="Save as template" />}
+                    >
+                      <BookmarkPlus className="size-3.5" />
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Save as Template</DialogTitle>
+                        <DialogDescription>
+                          Save this contract as a reusable template. Future users will only fill in the variable fields.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-3 pt-2">
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-muted-foreground">Template Name</label>
+                          <Input
+                            placeholder="e.g. Sponsorship Agreement v2"
+                            value={newTemplateName}
+                            onChange={(e) => setNewTemplateName(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-muted-foreground">Variable Fields</label>
+                          <p className="text-xs text-muted-foreground">
+                            {templateVars.length > 0
+                              ? templateVars.map((v) => v.label).join(', ')
+                              : 'Name, Email, Address, Term'}
+                          </p>
+                        </div>
+                        <Button
+                          className="w-full"
+                          disabled={!newTemplateName.trim() || isSavingTemplate}
+                          onClick={handleSaveAsTemplate}
+                        >
+                          {isSavingTemplate ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <>
+                              <BookmarkPlus className="size-4" />
+                              Save Template
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={handleSave}
                     disabled={isSaving}
                     title="Save as document"
@@ -255,7 +417,7 @@ export function GenerateForm({ templates, entities }: GenerateFormProps) {
           </CardHeader>
           <CardContent>
             {draft ? (
-              <pre className="whitespace-pre-wrap rounded-lg bg-muted/50 p-4 font-mono text-xs leading-relaxed">
+              <pre className="whitespace-pre-wrap rounded-lg bg-muted/50 p-4 font-mono text-xs leading-relaxed max-h-[600px] overflow-y-auto">
                 {draft}
               </pre>
             ) : (
@@ -267,12 +429,77 @@ export function GenerateForm({ templates, entities }: GenerateFormProps) {
                   No draft generated yet
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Select a template, entity, and fill in variables, then click Generate
+                  Select a template, entity, and fill in the counterparty details, then click Generate
                 </p>
               </div>
             )}
           </CardContent>
         </Card>
+
+        {/* AI Chat Refinement */}
+        {showChat && draft && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <MessageSquare className="size-4 text-violet-400" />
+                Refine with AI
+              </CardTitle>
+              <CardDescription>
+                Give instructions to modify the contract — e.g. &quot;add a non-compete clause&quot; or &quot;change payment terms to NET 60&quot;
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {/* Chat history */}
+              {chatMessages.length > 0 && (
+                <div className="max-h-48 overflow-y-auto space-y-2 rounded-lg bg-muted/30 p-3">
+                  {chatMessages.map((msg, i) => (
+                    <div
+                      key={i}
+                      className={`text-xs ${
+                        msg.role === 'user'
+                          ? 'text-blue-400'
+                          : 'text-emerald-400'
+                      }`}
+                    >
+                      <span className="font-medium">
+                        {msg.role === 'user' ? 'You: ' : 'AI: '}
+                      </span>
+                      {msg.content}
+                    </div>
+                  ))}
+                  <div ref={chatEndRef} />
+                </div>
+              )}
+
+              {/* Input */}
+              <div className="flex gap-2">
+                <Input
+                  placeholder="e.g. Add a non-compete clause for 12 months..."
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      handleSendChat()
+                    }
+                  }}
+                  disabled={isRefining}
+                />
+                <Button
+                  size="sm"
+                  onClick={handleSendChat}
+                  disabled={!chatInput.trim() || isRefining}
+                >
+                  {isRefining ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Send className="size-4" />
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   )

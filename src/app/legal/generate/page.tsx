@@ -11,8 +11,10 @@ const DEFAULT_VARIABLES = [
   { key: "value", label: "Contract Value (AED)", placeholder: "e.g. 50000" },
 ]
 
-export default async function GeneratePage() {
+export default async function GeneratePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  const params = await searchParams
+  const preselectedTemplate = typeof params.template === 'string' ? params.template : undefined
 
   const dbTemplates = await prisma.contractTemplate.findMany({
     where: { is_active: true },
@@ -61,7 +63,7 @@ export default async function GeneratePage() {
         </div>
       </div>
 
-      <GenerateForm templates={templates} entities={entities} />
+      <GenerateForm templates={templates} entities={entities} preselectedTemplateId={preselectedTemplate} />
     </div>
   )
 }

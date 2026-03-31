@@ -140,7 +140,7 @@ export default async function TemplatesPage() {
                   size="sm"
                   className="w-full"
                   render={
-                    <Link href="/legal/generate" />
+                    <Link href={`/legal/generate?template=${template.id}`} />
                   }
                 >
                   <Sparkles className="size-3.5" />
