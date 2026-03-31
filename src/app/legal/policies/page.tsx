@@ -19,6 +19,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { FileText, ExternalLink } from "lucide-react"
+import { FileUpload } from "@/components/legal/file-upload"
+import { uploadPolicyFile } from "@/actions/files"
 
 export default async function PoliciesPage() {
   await requireSession()
@@ -162,7 +164,13 @@ export default async function PoliciesPage() {
                             View
                           </a>
                         ) : (
-                          <span className="text-muted-foreground">&mdash;</span>
+                          <FileUpload
+                            action={uploadPolicyFile}
+                            entityId={policy.id}
+                            entityIdField="policyId"
+                            label="Upload"
+                            accept=".pdf,.doc,.docx"
+                          />
                         )}
                       </TableCell>
                     </TableRow>

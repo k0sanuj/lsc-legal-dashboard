@@ -27,10 +27,13 @@ import {
   Users,
   StickyNote,
   ArrowRight,
-  ExternalLink,
 } from "lucide-react"
 import { NotesPanel } from "@/components/legal/notes-panel"
 import { CommentsPanel } from "@/components/legal/comments-panel"
+import { SendForSignatureButton } from "@/components/legal/send-for-signature-button"
+import { FileDisplay } from "@/components/legal/file-display"
+import { FileUpload } from "@/components/legal/file-upload"
+import { uploadDocumentFile, deleteDocumentFile, uploadVersionFile } from "@/actions/files"
 import type { SignatureStatus } from "@/generated/prisma/client"
 
 const SIGNATURE_STATUS_COLORS: Record<SignatureStatus, string> = {
@@ -84,20 +87,16 @@ export default async function DocumentDetailPage({
     ENTITIES.find((e) => e.value === document.entity)?.label ?? document.entity
 
   const parties = (document.parties as string[] | null) ?? []
+  const pendingSignatureCount = document.signature_requests.filter(
+    (sr) => sr.status === 'PENDING'
+  ).length
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold">{document.title}</h1>
-            {document.file_url && (
-              <a href={document.file_url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary" title="Open file">
-                <ExternalLink className="h-4 w-4" />
-              </a>
-            )}
-          </div>
+          <h1 className="text-2xl font-bold">{document.title}</h1>
           <div className="flex flex-wrap items-center gap-2">
             <LifecycleBadge status={document.lifecycle_status} />
             <Badge variant="outline">{entityLabel}</Badge>
@@ -105,8 +104,24 @@ export default async function DocumentDetailPage({
               {document.category.replace(/_/g, " ")}
             </Badge>
           </div>
+          <div className="flex items-center gap-3 pt-1">
+            <FileDisplay
+              fileUrl={document.file_url}
+              documentId={document.id}
+              onDelete={deleteDocumentFile}
+            />
+            {!document.file_url && (
+              <FileUpload
+                action={uploadDocumentFile}
+                entityId={document.id}
+                entityIdField="documentId"
+                extraFields={{ entity: document.entity, category: document.category }}
+                label="Attach File"
+              />
+            )}
+          </div>
         </div>
-        <div className="text-right">
+        <div className="text-right space-y-2">
           {document.value && (
             <p className="text-2xl font-bold font-figures">
               {formatAED(document.value.toNumber())}
@@ -115,6 +130,12 @@ export default async function DocumentDetailPage({
           <p className="text-xs text-muted-foreground">
             Owner: {document.owner.full_name}
           </p>
+          {pendingSignatureCount > 0 && (
+            <SendForSignatureButton
+              documentId={document.id}
+              pendingCount={pendingSignatureCount}
+            />
+          )}
         </div>
       </div>
 
@@ -219,7 +240,24 @@ export default async function DocumentDetailPage({
 
         {/* Versions Tab */}
         <TabsContent value={1}>
-          <div className="mt-4">
+          <div className="mt-4 space-y-4">
+            {/* Upload New Version */}
+            <div className="flex items-center justify-between rounded-xl border border-border/50 bg-card p-4">
+              <div>
+                <h3 className="text-sm font-medium">Upload New Version</h3>
+                <p className="text-xs text-muted-foreground">
+                  Upload a file to create version {(document.versions[0]?.version_number ?? 0) + 1}
+                </p>
+              </div>
+              <FileUpload
+                action={uploadVersionFile}
+                entityId={document.id}
+                entityIdField="documentId"
+                extraFields={{ entity: document.entity, changeSummary: "New version uploaded" }}
+                label="Upload Version"
+              />
+            </div>
+
             {document.versions.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card py-12">
                 <FileText className="h-8 w-8 text-muted-foreground/50 mb-2" />
