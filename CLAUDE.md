@@ -3,7 +3,18 @@
 # LSC Legal & Compliance Dashboard
 
 ## Project Overview
-Module 2 of the LSC Operations Platform. Legal document management, compliance tracking, signature workflows, AI contract generation, ESOP management, and 85-item legal tracker for League Sports Co.
+Module 2 of the LSC Operations Platform. Full legal operations platform: compliance management (per-entity, per-jurisdiction), agreement lifecycle management, KYC tracking, litigation management, email intelligence, subsidies, AI contract generation, ESOP management, agent-based automation, and 85-item legal tracker for League Sports Co.
+
+## Agent Architecture
+
+Agents live in `src/lib/agents/`. Each extends `BaseAgent` and implements `run()`.
+
+- **Orchestrator** (`orchestrator.ts`): Routes messages between agents, runs agents on demand
+- **Compliance Agent**: 15-day scan of all entities/jurisdictions for compliance issues
+- **Agreement Analyzer**: AI-powered document categorization, clause extraction, file naming
+- **Invoice Detection**: Scans emails for invoices, verifies math, routes to finance
+- **Compliance Audit**: Full adversarial audit every 15 days, produces AuditReport records
+- Agents communicate via `AgentMessage` table, cross-dashboard via `CrossModuleEvent` table
 
 ## Tech Stack
 - **Framework**: Next.js 16.2.1 (App Router, Server Components)

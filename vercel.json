@@ -3,6 +3,14 @@
     {
       "path": "/api/cron/expirations",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/compliance-scan",
+      "schedule": "0 6 1,15 * *"
+    },
+    {
+      "path": "/api/cron/full-audit",
+      "schedule": "0 4 1,15 * *"
     }
   ]
 }

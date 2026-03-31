@@ -31,29 +31,13 @@ export const PAGE_PERMISSIONS: Record<string, UserRole[]> = {
   "/legal/signatures": ADMIN_ROLES,
   "/legal/generate": ADMIN_ROLES,
   "/legal/templates": ADMIN_ROLES,
-  "/legal/expirations": [
-    "PLATFORM_ADMIN",
-    "FINANCE_ADMIN",
-    "LEGAL_ADMIN",
-    "OPS_ADMIN",
-  ],
-  "/legal/compliance": [
-    "PLATFORM_ADMIN",
-    "LEGAL_ADMIN",
-    "OPS_ADMIN",
-  ],
-  "/legal/esop": [
-    "PLATFORM_ADMIN",
-    "FINANCE_ADMIN",
-    "LEGAL_ADMIN",
-    "OPS_ADMIN",
-  ],
-  "/legal/esop/[id]": [
-    "PLATFORM_ADMIN",
-    "FINANCE_ADMIN",
-    "LEGAL_ADMIN",
-    "OPS_ADMIN",
-  ],
+  "/legal/expirations": ADMIN_ROLES,
+  "/legal/compliance": ADMIN_ROLES,
+  "/legal/compliance/data-protection": ADMIN_ROLES,
+  "/legal/compliance/registered-offices": ADMIN_ROLES,
+  "/legal/compliance/emails": ADMIN_ROLES,
+  "/legal/esop": ADMIN_ROLES,
+  "/legal/esop/[id]": ADMIN_ROLES,
   "/legal/policies": [
     "PLATFORM_ADMIN",
     "FINANCE_ADMIN",
@@ -73,15 +57,20 @@ export const PAGE_PERMISSIONS: Record<string, UserRole[]> = {
   ],
   "/legal/tracker": ADMIN_ROLES,
   "/legal/payment-cycles": ADMIN_ROLES,
-  "/legal/documents/review": [
-    "PLATFORM_ADMIN",
-    "LEGAL_ADMIN",
-    "OPS_ADMIN",
-  ],
+  "/legal/documents/review": LEGAL_WRITE_ROLES,
+  // New sections
+  "/legal/litigation": ADMIN_ROLES,
+  "/legal/litigation/[id]": ADMIN_ROLES,
+  "/legal/kyc": ADMIN_ROLES,
+  "/legal/admin-accounts": ADMIN_ROLES,
+  "/legal/subsidies": ADMIN_ROLES,
+  "/legal/email-intelligence": ADMIN_ROLES,
+  "/legal/agreements": ALL_ROLES,
+  "/legal/clickwrap": ADMIN_ROLES,
+  "/legal/audit-reports": LEGAL_WRITE_ROLES,
 }
 
 export function canAccessPage(role: UserRole, path: string): boolean {
-  // Normalize dynamic segments
   const normalized = path.replace(/\/[a-f0-9-]{36}/g, "/[id]")
   const allowedRoles = PAGE_PERMISSIONS[normalized]
   if (!allowedRoles) return false
@@ -106,20 +95,35 @@ export const NAV_ITEMS: NavItem[] = [
   // Overview
   { label: "Command Center", href: "/legal", icon: "LayoutDashboard", group: "Overview" },
 
-  // Documents
-  { label: "Documents", href: "/legal/documents", icon: "FileText", group: "Documents" },
-  { label: "Review Queue", href: "/legal/documents/review", icon: "MessageSquare", group: "Documents" },
-  { label: "Signatures", href: "/legal/signatures", icon: "PenTool", group: "Documents" },
-  { label: "Templates", href: "/legal/templates", icon: "LayoutTemplate", group: "Documents" },
-  { label: "AI Generator", href: "/legal/generate", icon: "Sparkles", group: "Documents" },
+  // Documents & Agreements
+  { label: "Agreements", href: "/legal/agreements", icon: "Handshake", group: "Agreements" },
+  { label: "Documents", href: "/legal/documents", icon: "FileText", group: "Agreements" },
+  { label: "Review Queue", href: "/legal/documents/review", icon: "MessageSquare", group: "Agreements" },
+  { label: "Signatures", href: "/legal/signatures", icon: "PenTool", group: "Agreements" },
+  { label: "Templates", href: "/legal/templates", icon: "LayoutTemplate", group: "Agreements" },
+  { label: "AI Generator", href: "/legal/generate", icon: "Sparkles", group: "Agreements" },
+  { label: "Clickwrap", href: "/legal/clickwrap", icon: "MousePointerClick", group: "Agreements" },
 
-  // Compliance
-  { label: "Expirations", href: "/legal/expirations", icon: "Clock", group: "Compliance" },
+  // Compliance & Risk
   { label: "Compliance", href: "/legal/compliance", icon: "ShieldCheck", group: "Compliance" },
-  { label: "Payment Cycles", href: "/legal/payment-cycles", icon: "CreditCard", group: "Compliance" },
+  { label: "Data Protection", href: "/legal/compliance/data-protection", icon: "Lock", group: "Compliance" },
+  { label: "Registered Offices", href: "/legal/compliance/registered-offices", icon: "Building", group: "Compliance" },
+  { label: "Company Emails", href: "/legal/compliance/emails", icon: "Mail", group: "Compliance" },
+  { label: "Expirations", href: "/legal/expirations", icon: "Clock", group: "Compliance" },
+  { label: "Audit Reports", href: "/legal/audit-reports", icon: "ClipboardCheck", group: "Compliance" },
+
+  // Legal Operations
+  { label: "Litigation", href: "/legal/litigation", icon: "Gavel", group: "Legal Ops" },
+  { label: "KYC", href: "/legal/kyc", icon: "UserCheck", group: "Legal Ops" },
+  { label: "Admin Accounts", href: "/legal/admin-accounts", icon: "KeyRound", group: "Legal Ops" },
+  { label: "Subsidies", href: "/legal/subsidies", icon: "Landmark", group: "Legal Ops" },
+  { label: "Email Intel", href: "/legal/email-intelligence", icon: "Inbox", group: "Legal Ops" },
+
+  // Finance & Corporate
+  { label: "Payment Cycles", href: "/legal/payment-cycles", icon: "CreditCard", group: "Finance" },
+  { label: "ESOP", href: "/legal/esop", icon: "TrendingUp", group: "Finance" },
 
   // Operations
-  { label: "ESOP", href: "/legal/esop", icon: "TrendingUp", group: "Operations" },
   { label: "Policies", href: "/legal/policies", icon: "BookOpen", group: "Operations" },
   { label: "Issues", href: "/legal/issues", icon: "AlertCircle", group: "Operations" },
   { label: "Tracker", href: "/legal/tracker", icon: "ListChecks", group: "Operations" },

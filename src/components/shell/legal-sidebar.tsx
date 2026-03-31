@@ -20,6 +20,17 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  Handshake,
+  MousePointerClick,
+  Lock,
+  Building,
+  Mail,
+  ClipboardCheck,
+  Gavel,
+  UserCheck,
+  KeyRound,
+  Landmark,
+  Inbox,
 } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
@@ -40,6 +51,17 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   AlertCircle,
   ListChecks,
   MessageSquare,
+  Handshake,
+  MousePointerClick,
+  Lock,
+  Building,
+  Mail,
+  ClipboardCheck,
+  Gavel,
+  UserCheck,
+  KeyRound,
+  Landmark,
+  Inbox,
 }
 
 interface LegalSidebarProps {

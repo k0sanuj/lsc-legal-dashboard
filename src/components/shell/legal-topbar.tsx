@@ -13,11 +13,22 @@ const ROUTE_LABELS: Record<string, string> = {
   "/legal/templates": "Templates",
   "/legal/expirations": "Expirations",
   "/legal/compliance": "Compliance",
+  "/legal/compliance/data-protection": "Data Protection",
+  "/legal/compliance/registered-offices": "Registered Offices",
+  "/legal/compliance/emails": "Company Emails",
   "/legal/esop": "ESOP Contracts",
   "/legal/policies": "Policies",
   "/legal/issues": "Issues",
   "/legal/tracker": "Tracker",
   "/legal/payment-cycles": "Payment Cycles",
+  "/legal/litigation": "Litigation",
+  "/legal/kyc": "KYC",
+  "/legal/admin-accounts": "Admin Accounts",
+  "/legal/subsidies": "Subsidies",
+  "/legal/email-intelligence": "Email Intelligence",
+  "/legal/agreements": "Agreements",
+  "/legal/clickwrap": "Clickwrap",
+  "/legal/audit-reports": "Audit Reports",
 }
 
 interface LegalTopbarProps {

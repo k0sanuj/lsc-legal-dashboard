@@ -41,6 +41,11 @@ const JURISDICTION_LABELS: Record<Jurisdiction, string> = {
   UAE: "UAE",
   US_DELAWARE: "US / Delaware",
   GLOBAL: "Global",
+  INDIA: "India",
+  KENYA: "Kenya",
+  UK: "UK",
+  SINGAPORE: "Singapore",
+  CAYMAN: "Cayman Islands",
 }
 
 export default async function CompliancePage() {
@@ -58,10 +63,10 @@ export default async function CompliancePage() {
 
   const overdueCount = deadlines.filter((d) => d.status === "OVERDUE").length
 
-  const byJurisdiction: Record<Jurisdiction, typeof deadlines> = {
-    UAE: deadlines.filter((d) => d.jurisdiction === "UAE"),
-    US_DELAWARE: deadlines.filter((d) => d.jurisdiction === "US_DELAWARE"),
-    GLOBAL: deadlines.filter((d) => d.jurisdiction === "GLOBAL"),
+  const byJurisdiction: Partial<Record<Jurisdiction, typeof deadlines>> = {}
+  for (const d of deadlines) {
+    if (!byJurisdiction[d.jurisdiction]) byJurisdiction[d.jurisdiction] = []
+    byJurisdiction[d.jurisdiction]!.push(d)
   }
 
   function renderTable(items: typeof deadlines) {
@@ -171,7 +176,7 @@ export default async function CompliancePage() {
                 <TabsTrigger key={j} value={j}>
                   {JURISDICTION_LABELS[j]}{" "}
                   <span className="ml-1 text-xs text-muted-foreground">
-                    ({byJurisdiction[j].length})
+                    ({byJurisdiction[j]!.length})
                   </span>
                 </TabsTrigger>
               ))}
@@ -179,7 +184,7 @@ export default async function CompliancePage() {
 
             {(Object.keys(byJurisdiction) as Jurisdiction[]).map((j) => (
               <TabsContent key={j} value={j} className="mt-4">
-                {renderTable(byJurisdiction[j])}
+                {renderTable(byJurisdiction[j]!)}
               </TabsContent>
             ))}
           </Tabs>

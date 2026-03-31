@@ -47,6 +47,20 @@ enum DocumentCategory {
   BOARD_RESOLUTION
   POLICY
   OTHER
+  // New expanded categories
+  MSA
+  SLA
+  CONTRACTOR
+  REFERRAL_PARTNER
+  VENUE
+  PRODUCTION_PARTNER
+  CLICKWRAP
+  REGISTERED_OFFICE
+  SAAS_SUBSCRIPTION
+  INSURANCE
+  GOVERNMENT_FILING
+  LITIGATION_DOC
+  SUBSIDY_GRANT
 }
 
 enum SignatureStatus {
@@ -135,6 +149,11 @@ enum Jurisdiction {
   UAE
   US_DELAWARE
   GLOBAL
+  INDIA
+  KENYA
+  UK
+  SINGAPORE
+  CAYMAN
 }
 
 enum UserRole {
@@ -146,6 +165,69 @@ enum UserRole {
   COMMERCIAL_OFFICER
   TEAM_MEMBER
   EXTERNAL_AUDITOR
+}
+
+enum NoticeCategory {
+  DATA_PROTECTION
+  COMPLAINT
+  LEGAL_NOTICE
+  REGULATORY
+  OTHER
+}
+
+enum NoticeStatus {
+  NEW
+  ACKNOWLEDGED
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum RegistrationStatus {
+  ACTIVE
+  PENDING
+  EXPIRED
+  AT_RISK
+}
+
+enum LitigationStatus {
+  PRE_FILING
+  FILED
+  DISCOVERY
+  TRIAL
+  APPEAL
+  SETTLED
+  CLOSED
+}
+
+enum SubsidyStatus {
+  IDENTIFIED
+  APPLYING
+  APPROVED
+  REJECTED
+  DISBURSED
+}
+
+enum KycDocStatus {
+  COLLECTED
+  VERIFIED
+  EXPIRED
+  NEEDS_RENEWAL
+}
+
+enum EmailTag {
+  INVOICE
+  LEGAL_NOTICE
+  AGREEMENT
+  CORRESPONDENCE
+  MARKETING
+  INTERNAL
+}
+
+enum AgentPriority {
+  CRITICAL
+  HIGH
+  NORMAL
+  LOW
 }
 
 // ─── Auth Models ─────────────────────────────────────────────────────────────
@@ -170,6 +252,9 @@ model AppUser {
   document_comments DocumentComment[]  @relation("CommentAuthor")
   notifications     Notification[]
   assigned_notices  IncomingNotice[]   @relation("NoticeAssignee")
+  compliance_officer_for ComplianceOfficer[]
+  assigned_litigation    LitigationCase[] @relation("LitigationAssignee")
+  assigned_kyc           KycDocument[]    @relation("KycAssignee")
 }
 
 model AuthAccessEvent {
@@ -205,6 +290,12 @@ model LegalDocument {
   notes            String?
   file_url         String?
   finance_sponsor_id String?
+  counterparty     String?
+  assigned_to      String?
+  financial_impact_recurring Decimal?
+  financial_impact_onetime   Decimal?
+  auto_renew       Boolean          @default(false)
+  hellosign_envelope_id String?
   created_at       DateTime         @default(now())
   updated_at       DateTime         @updatedAt
 
@@ -223,6 +314,7 @@ model LegalDocument {
   @@index([entity, lifecycle_status])
   @@index([expiry_date])
   @@index([owner_id])
+  @@index([category])
 }
 
 model DocumentVersion {
@@ -308,6 +400,98 @@ model ComplianceDeadline {
 
   @@index([deadline_date, status])
   @@index([jurisdiction])
+}
+
+model ComplianceRecord {
+  id                    String             @id @default(uuid())
+  entity                Entity
+  jurisdiction          Jurisdiction
+  check_type            String
+  status                RegistrationStatus @default(PENDING)
+  registration_number   String?
+  registration_details  String?
+  last_checked          DateTime?
+  next_check            DateTime?
+  notes                 String?
+  assigned_to           String?
+  cost_monthly          Decimal?
+  cost_annual           Decimal?
+  created_at            DateTime           @default(now())
+  updated_at            DateTime           @updatedAt
+
+  @@unique([entity, jurisdiction, check_type])
+  @@index([entity, jurisdiction])
+  @@index([status])
+}
+
+model ComplianceOfficer {
+  id          String   @id @default(uuid())
+  entity      Entity
+  user_id     String
+  is_primary  Boolean  @default(false)
+  created_at  DateTime @default(now())
+
+  user AppUser @relation(fields: [user_id], references: [id])
+
+  @@unique([entity, user_id])
+  @@index([entity])
+}
+
+model RegisteredOfficeAgreement {
+  id              String   @id @default(uuid())
+  entity          Entity
+  jurisdiction    Jurisdiction
+  address         String
+  landlord        String?
+  document_url    String?
+  renewal_date    DateTime
+  cost_annual     Decimal?
+  currency        String   @default("AED")
+  auto_renew      Boolean  @default(false)
+  notes           String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@index([entity, renewal_date])
+}
+
+model CompanyEmail {
+  id              String   @id @default(uuid())
+  entity          Entity
+  email_address   String   @unique
+  owner_name      String?
+  last_activity   DateTime?
+  status          String   @default("active")
+  domain          String
+  domain_expiry   DateTime?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@index([entity])
+  @@index([status])
+}
+
+model DataProtectionRecord {
+  id                     String       @id @default(uuid())
+  entity                 Entity
+  jurisdiction           Jurisdiction
+  applicable_law         String
+  dpo_required           Boolean      @default(false)
+  dpo_name               String?
+  dpo_email              String?
+  registration_status    String?
+  registration_authority String?
+  last_audit_date        DateTime?
+  privacy_policy_url     String?
+  dpa_in_place           Boolean      @default(false)
+  breach_procedure       Boolean      @default(false)
+  health_score           Int?
+  notes                  String?
+  created_at             DateTime     @default(now())
+  updated_at             DateTime     @updatedAt
+
+  @@unique([entity, jurisdiction])
+  @@index([entity])
 }
 
 // ─── ESOP & Equity ───────────────────────────────────────────────────────────
@@ -444,6 +628,264 @@ model PaymentCycle {
   @@index([status])
 }
 
+// ─── KYC & Administrator Accounts ────────────────────────────────────────────
+
+model KycDocument {
+  id            String       @id @default(uuid())
+  entity        Entity
+  jurisdiction  Jurisdiction
+  document_type String
+  document_name String
+  file_url      String?
+  status        KycDocStatus @default(COLLECTED)
+  expiry_date   DateTime?
+  verified_by   String?
+  verified_at   DateTime?
+  notes         String?
+  created_at    DateTime     @default(now())
+  updated_at    DateTime     @updatedAt
+
+  verifier AppUser? @relation("KycAssignee", fields: [verified_by], references: [id])
+
+  @@index([entity, jurisdiction])
+  @@index([status])
+  @@index([expiry_date])
+}
+
+model AdminAccount {
+  id                   String   @id @default(uuid())
+  entity               Entity
+  platform_name        String
+  platform_url         String?
+  account_holder       String
+  access_level         String
+  last_verified        DateTime?
+  two_factor_enabled   Boolean  @default(false)
+  recovery_documented  Boolean  @default(false)
+  notes                String?
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  @@index([entity])
+}
+
+// ─── Litigation ──────────────────────────────────────────────────────────────
+
+model LitigationCase {
+  id                    String           @id @default(uuid())
+  case_name             String
+  case_number           String?
+  jurisdiction          Jurisdiction
+  court_tribunal        String?
+  entity                Entity
+  plaintiff             String
+  defendant             String
+  third_parties         Json?
+  status                LitigationStatus @default(PRE_FILING)
+  filing_date           DateTime?
+  next_hearing          DateTime?
+  statute_of_limitations DateTime?
+  assigned_counsel      String?
+  external_counsel      String?
+  estimated_liability   Decimal?
+  legal_fees_to_date    Decimal?
+  projected_total_cost  Decimal?
+  currency              String           @default("AED")
+  notes                 String?
+  assigned_to           String?
+  created_at            DateTime         @default(now())
+  updated_at            DateTime         @updatedAt
+
+  assignee AppUser?          @relation("LitigationAssignee", fields: [assigned_to], references: [id])
+  events   LitigationEvent[]
+  documents LitigationDocument[]
+
+  @@index([entity, status])
+  @@index([next_hearing])
+}
+
+model LitigationEvent {
+  id          String   @id @default(uuid())
+  case_id     String
+  event_type  String
+  title       String
+  description String?
+  event_date  DateTime
+  created_by  String?
+  created_at  DateTime @default(now())
+
+  case_record LitigationCase @relation(fields: [case_id], references: [id], onDelete: Cascade)
+
+  @@index([case_id, event_date])
+}
+
+model LitigationDocument {
+  id          String   @id @default(uuid())
+  case_id     String
+  title       String
+  file_url    String?
+  doc_type    String
+  uploaded_by String?
+  created_at  DateTime @default(now())
+
+  case_record LitigationCase @relation(fields: [case_id], references: [id], onDelete: Cascade)
+
+  @@index([case_id])
+}
+
+// ─── Email Intelligence ──────────────────────────────────────────────────────
+
+model DetectedInvoice {
+  id                  String   @id @default(uuid())
+  vendor_name         String
+  amount              Decimal
+  currency            String   @default("AED")
+  invoice_date        DateTime?
+  entity              Entity?
+  category            String?
+  verification_status String   @default("pending")
+  math_check_passed   Boolean  @default(false)
+  original_email_id   String?
+  file_url            String?
+  routed_to_finance   Boolean  @default(false)
+  notes               String?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  @@index([entity])
+  @@index([verification_status])
+}
+
+model EmailTagRecord {
+  id          String   @id @default(uuid())
+  email_id    String
+  subject     String
+  from_addr   String
+  tag         EmailTag
+  confidence  Float    @default(1.0)
+  processed   Boolean  @default(false)
+  created_at  DateTime @default(now())
+
+  @@index([tag])
+  @@index([email_id])
+}
+
+// ─── Clickwrap Agreements ────────────────────────────────────────────────────
+
+model ClickwrapAcceptance {
+  id                String   @id @default(uuid())
+  person_name       String
+  person_email      String
+  agreement_title   String
+  agreement_version Int
+  accepted_at       DateTime @default(now())
+  ip_address        String?
+  user_agent        String?
+  entity            Entity?
+
+  @@index([person_email])
+  @@index([agreement_title, agreement_version])
+}
+
+// ─── Subsidies ───────────────────────────────────────────────────────────────
+
+model Subsidy {
+  id                    String        @id @default(uuid())
+  title                 String
+  entity                Entity
+  jurisdiction          Jurisdiction
+  source                String
+  status                SubsidyStatus @default(IDENTIFIED)
+  amount                Decimal?
+  currency              String        @default("AED")
+  conditions            String?
+  reporting_requirements String?
+  application_date      DateTime?
+  approval_date         DateTime?
+  disbursement_date     DateTime?
+  website_url           String?
+  notes                 String?
+  created_at            DateTime      @default(now())
+  updated_at            DateTime      @updatedAt
+
+  @@index([entity, status])
+}
+
+// ─── Audit Reports ───────────────────────────────────────────────────────────
+
+model AuditReport {
+  id          String   @id @default(uuid())
+  audit_type  String
+  entity      Entity?
+  jurisdiction Jurisdiction?
+  findings    Json
+  summary     String?
+  risk_items  Int      @default(0)
+  compliant_items Int  @default(0)
+  total_items Int      @default(0)
+  run_by      String   @default("system")
+  created_at  DateTime @default(now())
+
+  @@index([audit_type, created_at])
+  @@index([entity])
+}
+
+// ─── Agent System ────────────────────────────────────────────────────────────
+
+model AgentActivityLog {
+  id         String   @id @default(uuid())
+  agent_id   String
+  agent_name String
+  action     String
+  details    Json?
+  created_at DateTime @default(now())
+
+  @@index([agent_id, created_at])
+  @@index([agent_name])
+}
+
+model AgentMessage {
+  id                String        @id @default(uuid())
+  from_agent        String
+  to_agent          String
+  intent            String
+  payload           Json
+  priority          AgentPriority @default(NORMAL)
+  requires_response Boolean       @default(false)
+  responded         Boolean       @default(false)
+  response_payload  Json?
+  created_at        DateTime      @default(now())
+
+  @@index([to_agent, created_at])
+  @@index([from_agent])
+  @@index([intent])
+}
+
+// ─── Dashboard Config ────────────────────────────────────────────────────────
+
+model DashboardTableConfig {
+  id          String   @id @default(uuid())
+  table_key   String   @unique
+  columns     Json
+  sort_order  Json?
+  filters     Json?
+  locked      Boolean  @default(true)
+  updated_by  String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+}
+
+model FileNamingLog {
+  id           String   @id @default(uuid())
+  original_name String
+  renamed_to    String
+  entity        Entity?
+  category      String?
+  approved      Boolean  @default(false)
+  approved_by   String?
+  created_at    DateTime @default(now())
+}
+
 // ─── Shared / Cross-Module ───────────────────────────────────────────────────
 
 model AuditDocument {
@@ -554,21 +996,6 @@ model Notification {
 
 // ─── Incoming Notices (Compliance) ───────────────────────────────────────────
 
-enum NoticeCategory {
-  DATA_PROTECTION
-  COMPLAINT
-  LEGAL_NOTICE
-  REGULATORY
-  OTHER
-}
-
-enum NoticeStatus {
-  NEW
-  ACKNOWLEDGED
-  IN_PROGRESS
-  RESOLVED
-}
-
 model IncomingNotice {
   id              String         @id @default(uuid())
   subject         String
@@ -576,10 +1003,13 @@ model IncomingNotice {
   body            String?
   category        NoticeCategory
   received_at     DateTime       @default(now())
+  response_deadline DateTime?
   status          NoticeStatus   @default(NEW)
   assigned_to     String?
   forwarded_to    Json?
   linked_issue_id String?
+  jurisdiction    Jurisdiction?
+  escalation_level Int           @default(0)
   created_at      DateTime       @default(now())
   updated_at      DateTime       @updatedAt
 
@@ -587,4 +1017,5 @@ model IncomingNotice {
 
   @@index([status, received_at])
   @@index([category])
+  @@index([response_deadline])
 }
