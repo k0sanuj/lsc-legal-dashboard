@@ -68,6 +68,7 @@ export const PAGE_PERMISSIONS: Record<string, UserRole[]> = {
   "/legal/agreements": ALL_ROLES,
   "/legal/clickwrap": ADMIN_ROLES,
   "/legal/audit-reports": LEGAL_WRITE_ROLES,
+  "/legal/agent-architecture": ADMIN_ROLES,
 }
 
 export function canAccessPage(role: UserRole, path: string): boolean {
@@ -127,4 +128,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Policies", href: "/legal/policies", icon: "BookOpen", group: "Operations" },
   { label: "Issues", href: "/legal/issues", icon: "AlertCircle", group: "Operations" },
   { label: "Tracker", href: "/legal/tracker", icon: "ListChecks", group: "Operations" },
+
+  // System
+  { label: "Agent Architecture", href: "/legal/agent-architecture", icon: "Bot", group: "System" },
 ]

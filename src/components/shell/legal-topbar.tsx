@@ -29,6 +29,7 @@ const ROUTE_LABELS: Record<string, string> = {
   "/legal/agreements": "Agreements",
   "/legal/clickwrap": "Clickwrap",
   "/legal/audit-reports": "Audit Reports",
+  "/legal/agent-architecture": "Agent Architecture",
 }
 
 interface LegalTopbarProps {
