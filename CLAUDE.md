@@ -10,7 +10,7 @@ Module 2 of the LSC Operations Platform. Legal document management, compliance t
 - **Database**: NeonDB (PostgreSQL) via Prisma 7.6.0
 - **UI**: shadcn/ui + Tailwind CSS v4 (dark mode primary)
 - **Charts**: Recharts
-- **AI**: Anthropic Claude API (@anthropic-ai/sdk)
+- **AI**: Google Gemini API (@google/generative-ai)
 - **Drag & Drop**: @dnd-kit/core
 - **Icons**: lucide-react
 - **Auth**: Custom cookie-based HMAC sessions
