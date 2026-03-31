@@ -7,6 +7,8 @@ import {
 import { formatAED, formatDate, formatRelativeDate, daysUntil } from "@/lib/format"
 import { StatCard } from "@/components/legal/stat-card"
 import { LifecycleBadge } from "@/components/legal/lifecycle-badge"
+import { StatusDonutChart } from "@/components/charts/status-donut-chart"
+import { TrackerBarChart } from "@/components/charts/tracker-bar-chart"
 import { Badge } from "@/components/ui/badge"
 import {
   Table,
@@ -25,6 +27,29 @@ import {
 import Link from "next/link"
 import type { LifecycleStatus } from "@/generated/prisma/client"
 
+const STATUS_CHART_COLORS: Record<string, string> = {
+  DRAFT: "#94a3b8",
+  IN_REVIEW: "#0ea5e9",
+  NEGOTIATION: "#f59e0b",
+  AWAITING_SIGNATURE: "#8b5cf6",
+  SIGNED: "#10b981",
+  ACTIVE: "#3b82f6",
+  EXPIRING: "#f43f5e",
+  EXPIRED: "#64748b",
+  TERMINATED: "#b91c1c",
+}
+
+const TRACKER_CATEGORY_LABELS: Record<string, string> = {
+  PLATFORM: "Platform",
+  VAUNT_ACQUISITION: "Vaunt Acq.",
+  KEY_AGREEMENTS: "Key Agreements",
+  CORPORATE: "Corporate",
+  PAYMENTS: "Payments",
+  IP_PATENTS: "IP & Patents",
+  GIG_MARKETING: "Gig Marketing",
+  OTHER: "Other",
+}
+
 export default async function CommandCenterPage() {
   await requireSession()
 
@@ -41,6 +66,7 @@ export default async function CommandCenterPage() {
       signatureCounts,
       upcomingExpirations,
       recentEvents,
+      trackerByCategory,
     ] = await Promise.all([
       prisma.legalDocument.count(),
       prisma.signatureRequest.count({
@@ -86,6 +112,10 @@ export default async function CommandCenterPage() {
           document: { select: { id: true, title: true } },
         },
       }),
+      prisma.trackerItem.groupBy({
+        by: ["category", "status"],
+        _count: { id: true },
+      }),
     ])
 
     const statusCountMap = Object.fromEntries(
@@ -95,6 +125,30 @@ export default async function CommandCenterPage() {
     const signatureCountMap = Object.fromEntries(
       signatureCounts.map((s) => [s.status, s._count.id])
     ) as Record<string, number>
+
+    // Chart data for status donut
+    const donutData = (Object.keys(LIFECYCLE_STATUS_LABELS) as LifecycleStatus[]).map(
+      (status) => ({
+        name: LIFECYCLE_STATUS_LABELS[status],
+        value: statusCountMap[status] ?? 0,
+        color: STATUS_CHART_COLORS[status] ?? "#64748b",
+      })
+    ).filter((d) => d.value > 0)
+
+    // Chart data for tracker bars
+    const trackerMap = new Map<string, { total: number; complete: number }>()
+    for (const row of trackerByCategory) {
+      const cat = row.category
+      if (!trackerMap.has(cat)) trackerMap.set(cat, { total: 0, complete: 0 })
+      const entry = trackerMap.get(cat)!
+      entry.total += row._count.id
+      if (row.status === "COMPLETE") entry.complete += row._count.id
+    }
+    const trackerData = Array.from(trackerMap.entries()).map(([cat, counts]) => ({
+      name: TRACKER_CATEGORY_LABELS[cat] ?? cat,
+      total: counts.total,
+      complete: counts.complete,
+    }))
 
     return (
       <div className="space-y-6">
@@ -131,24 +185,16 @@ export default async function CommandCenterPage() {
 
         {/* Two-column grid */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Document Status */}
+          {/* Document Status — Donut Chart */}
           <div className="rounded-xl border border-border/50 bg-card p-6">
             <h2 className="text-lg font-semibold mb-4">Document Status</h2>
-            <div className="space-y-3">
-              {(Object.keys(LIFECYCLE_STATUS_LABELS) as LifecycleStatus[]).map(
-                (status) => (
-                  <div
-                    key={status}
-                    className="flex items-center justify-between"
-                  >
-                    <LifecycleBadge status={status} />
-                    <span className="text-sm font-figures font-medium text-muted-foreground">
-                      {statusCountMap[status] ?? 0}
-                    </span>
-                  </div>
-                )
-              )}
-            </div>
+            {donutData.length > 0 ? (
+              <StatusDonutChart data={donutData} />
+            ) : (
+              <p className="text-sm text-muted-foreground py-8 text-center">
+                No documents yet.
+              </p>
+            )}
           </div>
 
           {/* Signature Pipeline */}
@@ -178,6 +224,14 @@ export default async function CommandCenterPage() {
             </div>
           </div>
         </div>
+
+        {/* Tracker Progress */}
+        {trackerData.length > 0 && (
+          <div className="rounded-xl border border-border/50 bg-card p-6">
+            <h2 className="text-lg font-semibold mb-4">Tracker Progress by Category</h2>
+            <TrackerBarChart data={trackerData} />
+          </div>
+        )}
 
         {/* Upcoming Expirations */}
         <div className="rounded-xl border border-border/50 bg-card p-6">

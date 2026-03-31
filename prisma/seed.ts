@@ -193,6 +193,7 @@ async function main() {
       value: 1500000,
       currency: "AED",
       expiry_date: future(45),
+      file_url: "https://drive.google.com/file/d/tbr-redbull-s3-sponsorship-signed",
       parties: [{ name: "RedBull Racing", role: "Sponsor", email: "legal@redbull.com" }],
     },
     {
@@ -226,6 +227,7 @@ async function main() {
       value: 500000,
       currency: "AED",
       expiry_date: future(365),
+      file_url: "https://drive.google.com/file/d/tbr-pilot-employment-signed",
       parties: [{ name: "Primary Pilot", role: "Employee", email: "pilot@tbr.co" }],
     },
     {
@@ -271,6 +273,8 @@ async function main() {
     },
   ]
 
+  const createdDocs: Array<{ id: string; title: string; owner_id: string; lifecycle_status: string }> = []
+
   for (const doc of docs) {
     const created = await prisma.legalDocument.create({
       data: {
@@ -279,6 +283,7 @@ async function main() {
         parties: doc.parties as any,
       },
     })
+    createdDocs.push({ id: created.id, title: created.title, owner_id: doc.owner_id, lifecycle_status: doc.lifecycle_status })
 
     // Create initial version
     await prisma.documentVersion.create({
@@ -452,6 +457,7 @@ async function main() {
     {
       employee_name: "Adi K Mishra",
       employee_email: "ak@leaguesports.co",
+      entity: "LSC" as const,
       grant_date: new Date("2024-01-15"),
       total_shares: 100000,
       vested_shares: 25000,
@@ -463,6 +469,7 @@ async function main() {
     {
       employee_name: "Anuj Kumar Singh",
       employee_email: "anuj@leaguesports.co",
+      entity: "LSC" as const,
       grant_date: new Date("2024-03-01"),
       total_shares: 75000,
       vested_shares: 18750,
@@ -474,6 +481,7 @@ async function main() {
     {
       employee_name: "JP Deal Partner",
       employee_email: "jp@partner.co",
+      entity: "FSP" as const,
       grant_date: new Date("2024-06-01"),
       total_shares: 50000,
       vested_shares: 0,
@@ -548,6 +556,136 @@ async function main() {
     await prisma.legalIssue.create({ data: issue })
   }
   console.log(`Created ${issues.length} legal issues`)
+
+  // ─── Document Notes ──────────────────────────────────────────────────────
+  for (const doc of createdDocs.slice(0, 4)) {
+    await prisma.documentNote.create({
+      data: {
+        document_id: doc.id,
+        content: "Initial review completed. Key terms verified against market standards.",
+        author_id: arvind.id,
+        created_at: new Date(Date.now() - 5 * 86400000),
+      },
+    })
+    await prisma.documentNote.create({
+      data: {
+        document_id: doc.id,
+        content: "Finance team confirmed budget allocation. Ready for next stage.",
+        author_id: anuj.id,
+        created_at: new Date(Date.now() - 2 * 86400000),
+      },
+    })
+  }
+  console.log("Created document notes")
+
+  // ─── Document Comments (on IN_REVIEW docs) ──────────────────────────────
+  const reviewDocs = createdDocs.filter((d) => d.lifecycle_status === "IN_REVIEW")
+  for (const doc of reviewDocs) {
+    await prisma.documentComment.create({
+      data: {
+        document_id: doc.id,
+        content: "Section 4.2 needs updated liability cap — current language is too broad for UAE jurisdiction.",
+        author_id: arvind.id,
+        resolved: false,
+      },
+    })
+    await prisma.documentComment.create({
+      data: {
+        document_id: doc.id,
+        content: "Indemnification clause reviewed and approved.",
+        author_id: ak.id,
+        resolved: true,
+      },
+    })
+  }
+  console.log("Created document comments")
+
+  // ─── Additional Signature Requests (for Kanban variety) ──────────────────
+  // Add PENDING and STALLED signatures to non-signed documents
+  const negotiationDocs = createdDocs.filter((d) => d.lifecycle_status === "NEGOTIATION")
+  for (const doc of negotiationDocs) {
+    await prisma.signatureRequest.create({
+      data: {
+        document_id: doc.id,
+        signatory_name: "External Counsel",
+        signatory_email: "counsel@lawfirm.ae",
+        status: "PENDING",
+      },
+    })
+  }
+  const expiringDocs = createdDocs.filter((d) => d.lifecycle_status === "EXPIRING")
+  for (const doc of expiringDocs) {
+    await prisma.signatureRequest.create({
+      data: {
+        document_id: doc.id,
+        signatory_name: "Renewal Signatory",
+        signatory_email: "renewal@partner.co",
+        status: "STALLED",
+        stalled_reason: "Awaiting renewal terms from counterparty",
+        sent_at: new Date(Date.now() - 10 * 86400000),
+      },
+    })
+  }
+  const draftDocs = createdDocs.filter((d) => d.lifecycle_status === "DRAFT")
+  for (const doc of draftDocs) {
+    await prisma.signatureRequest.create({
+      data: {
+        document_id: doc.id,
+        signatory_name: "Internal Review",
+        signatory_email: "arvind@leaguesports.co",
+        status: "PENDING",
+      },
+    })
+  }
+  console.log("Created additional signature requests")
+
+  // ─── Incoming Notices ────────────────────────────────────────────────────
+  const notices = [
+    {
+      subject: "GDPR Data Subject Access Request — User #4821",
+      from_email: "dpo@regulatorybody.eu",
+      body: "We have received a data subject access request from a user of your platform. Please respond within 30 days.",
+      category: "DATA_PROTECTION" as const,
+      status: "NEW" as const,
+      forwarded_to: ["arvind@leaguesports.co", "ak@leaguesports.co"],
+    },
+    {
+      subject: "Complaint: Prize Pool Distribution Delay",
+      from_email: "player@gmail.com",
+      body: "I won a tournament 3 weeks ago and have not received the prize. This is unacceptable.",
+      category: "COMPLAINT" as const,
+      status: "ACKNOWLEDGED" as const,
+      assigned_to: arvind.id,
+      forwarded_to: ["arvind@leaguesports.co", "ak@leaguesports.co"],
+    },
+    {
+      subject: "UAE Economic Substance Regulations — Annual Filing Reminder",
+      from_email: "notifications@moec.gov.ae",
+      body: "This is a reminder that your annual Economic Substance filing is due within 12 months of your financial year end.",
+      category: "REGULATORY" as const,
+      status: "NEW" as const,
+      forwarded_to: ["arvind@leaguesports.co", "ak@leaguesports.co"],
+    },
+  ]
+
+  for (const notice of notices) {
+    await prisma.incomingNotice.create({ data: notice as any })
+  }
+  console.log(`Created ${notices.length} incoming notices`)
+
+  // ─── Notifications ───────────────────────────────────────────────────────
+  const notificationData = [
+    { user_id: ak.id, type: "NOTICE_RECEIVED", title: "New data protection notice", message: "GDPR Data Subject Access Request received", link: "/legal/compliance", read: false },
+    { user_id: arvind.id, type: "NOTICE_RECEIVED", title: "New data protection notice", message: "GDPR Data Subject Access Request received", link: "/legal/compliance", read: false },
+    { user_id: arvind.id, type: "COMMENT_ADDED", title: "New comment on FSP ToS", message: "AK commented on Section 4.2 liability cap", link: "/legal/documents/review", read: true },
+    { user_id: anuj.id, type: "EXPIRATION_WARNING", title: "Document expiring soon", message: "Bowling Venue Lease expires in 12 days", link: "/legal/expirations", read: false },
+    { user_id: ak.id, type: "STATUS_CHANGE", title: "Document signed", message: "Pilot Employment Contract has been signed", link: "/legal/signatures", read: true },
+  ]
+
+  for (const notif of notificationData) {
+    await prisma.notification.create({ data: notif })
+  }
+  console.log(`Created ${notificationData.length} notifications`)
 
   console.log("Seeding complete!")
 }
