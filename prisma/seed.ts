@@ -687,6 +687,195 @@ async function main() {
   }
   console.log(`Created ${notificationData.length} notifications`)
 
+  // ─── Compliance Records ───────────────────────────────────────────────────
+  const complianceRecords = [
+    { entity: "LSC" as const, jurisdiction: "UAE" as const, check_type: "Business Registration", status: "ACTIVE" as const, registration_number: "LLC-2024-001234", last_checked: new Date("2026-03-15"), next_check: new Date("2026-06-15"), notes: "Dubai DED trade license — annual renewal" },
+    { entity: "LSC" as const, jurisdiction: "UAE" as const, check_type: "VAT Registration", status: "ACTIVE" as const, registration_number: "TRN-100234567890003", last_checked: new Date("2026-03-01"), next_check: new Date("2026-09-01") },
+    { entity: "LSC" as const, jurisdiction: "UAE" as const, check_type: "Corporate Tax", status: "ACTIVE" as const, registration_number: "CT-2024-00456", last_checked: new Date("2026-02-20"), next_check: new Date("2026-08-20") },
+    { entity: "TBR" as const, jurisdiction: "UAE" as const, check_type: "Business Registration", status: "ACTIVE" as const, registration_number: "LLC-2024-005678", last_checked: new Date("2026-03-10"), next_check: new Date("2026-06-10") },
+    { entity: "TBR" as const, jurisdiction: "UAE" as const, check_type: "Sports Authority License", status: "ACTIVE" as const, registration_number: "SA-2025-0042", last_checked: new Date("2026-01-15"), next_check: new Date("2026-07-15"), notes: "E1 series license — bi-annual" },
+    { entity: "FSP" as const, jurisdiction: "UAE" as const, check_type: "Business Registration", status: "ACTIVE" as const, registration_number: "FZCO-2024-00321", last_checked: new Date("2026-03-12"), next_check: new Date("2026-06-12"), notes: "DMCC free zone company" },
+    { entity: "FSP" as const, jurisdiction: "UAE" as const, check_type: "Data Protection Registration", status: "PENDING" as const, last_checked: new Date("2026-02-01"), next_check: new Date("2026-04-15"), notes: "PDPL registration pending with UAE DPA" },
+    { entity: "FSP" as const, jurisdiction: "INDIA" as const, check_type: "Business Registration", status: "ACTIVE" as const, registration_number: "CIN-U74999MH2024PTC", last_checked: new Date("2026-03-05"), next_check: new Date("2026-09-05"), notes: "India subsidiary — MCA registered" },
+    { entity: "LSC" as const, jurisdiction: "CAYMAN" as const, check_type: "Registered Agent", status: "AT_RISK" as const, last_checked: new Date("2025-12-01"), next_check: new Date("2026-03-01"), notes: "Registered agent agreement expired — needs renewal urgently" },
+  ]
+  for (const cr of complianceRecords) {
+    await prisma.complianceRecord.upsert({ where: { entity_jurisdiction_check_type: { entity: cr.entity, jurisdiction: cr.jurisdiction, check_type: cr.check_type } }, update: cr, create: cr })
+  }
+  console.log(`Created ${complianceRecords.length} compliance records`)
+
+  // ─── Compliance Officers ─────────────────────────────────────────────────
+  await prisma.complianceOfficer.upsert({ where: { entity_user_id: { entity: "LSC", user_id: arvind.id } }, update: {}, create: { entity: "LSC", user_id: arvind.id, is_primary: true } })
+  await prisma.complianceOfficer.upsert({ where: { entity_user_id: { entity: "LSC", user_id: ak.id } }, update: {}, create: { entity: "LSC", user_id: ak.id } })
+  await prisma.complianceOfficer.upsert({ where: { entity_user_id: { entity: "TBR", user_id: arvind.id } }, update: {}, create: { entity: "TBR", user_id: arvind.id, is_primary: true } })
+  await prisma.complianceOfficer.upsert({ where: { entity_user_id: { entity: "FSP", user_id: ak.id } }, update: {}, create: { entity: "FSP", user_id: ak.id, is_primary: true } })
+  console.log("Created compliance officers")
+
+  // ─── Registered Office Agreements ────────────────────────────────────────
+  const offices = [
+    { entity: "LSC" as const, jurisdiction: "UAE" as const, address: "Office 1204, Aspect Tower, Business Bay, Dubai", landlord: "Aspect Properties LLC", renewal_date: new Date("2026-12-31"), cost_annual: 85000, auto_renew: true },
+    { entity: "TBR" as const, jurisdiction: "UAE" as const, address: "Unit 502, DMCC Business Centre, JLT, Dubai", landlord: "DMCC Authority", renewal_date: new Date("2026-06-15"), cost_annual: 62000, auto_renew: false, notes: "Needs renewal negotiation — 30 days" },
+    { entity: "FSP" as const, jurisdiction: "UAE" as const, address: "Suite 3A, One JLT Tower, JLT, Dubai", landlord: "One JLT Management", renewal_date: new Date("2027-03-01"), cost_annual: 78000, auto_renew: true },
+    { entity: "FSP" as const, jurisdiction: "INDIA" as const, address: "WeWork, Prestige Atlanta, MG Road, Bangalore 560001", landlord: "WeWork India", renewal_date: new Date("2026-09-30"), cost_annual: 24000, currency: "INR" as const },
+  ]
+  for (const o of offices) { await prisma.registeredOfficeAgreement.create({ data: o }) }
+  console.log(`Created ${offices.length} registered office agreements`)
+
+  // ─── Data Protection Records ─────────────────────────────────────────────
+  const dpRecords = [
+    { entity: "LSC" as const, jurisdiction: "UAE" as const, applicable_law: "UAE PDPL (Federal Decree-Law No. 45/2021)", dpo_required: true, dpo_name: "Arvind Verma", dpo_email: "arvind@leaguesports.co", registration_status: "Registered", dpa_in_place: true, breach_procedure: true, health_score: 85 },
+    { entity: "TBR" as const, jurisdiction: "UAE" as const, applicable_law: "UAE PDPL", dpo_required: true, dpo_name: "Arvind Verma", dpo_email: "arvind@leaguesports.co", registration_status: "Registered", dpa_in_place: true, breach_procedure: false, health_score: 65, notes: "Breach notification procedure not yet documented" },
+    { entity: "FSP" as const, jurisdiction: "UAE" as const, applicable_law: "UAE PDPL", dpo_required: true, dpo_name: "Adi K Mishra", dpo_email: "ak@leaguesports.co", registration_status: "Pending", dpa_in_place: false, breach_procedure: false, health_score: 35, notes: "DPA and breach procedure both missing" },
+    { entity: "FSP" as const, jurisdiction: "INDIA" as const, applicable_law: "DPDPA 2023 (Digital Personal Data Protection Act)", dpo_required: true, registration_status: "Not registered", dpa_in_place: false, breach_procedure: false, health_score: 20, notes: "India DPDPA compliance not started" },
+  ]
+  for (const dp of dpRecords) {
+    await prisma.dataProtectionRecord.upsert({ where: { entity_jurisdiction: { entity: dp.entity, jurisdiction: dp.jurisdiction } }, update: dp, create: dp })
+  }
+  console.log(`Created ${dpRecords.length} data protection records`)
+
+  // ─── Company Emails ──────────────────────────────────────────────────────
+  const emails = [
+    { entity: "LSC" as const, email_address: "legal@leaguesportsco.com", owner_name: "Legal Team", domain: "leaguesportsco.com", domain_expiry: new Date("2027-06-15"), status: "active", last_activity: new Date("2026-03-31") },
+    { entity: "LSC" as const, email_address: "ak@leaguesports.co", owner_name: "Adi K Mishra", domain: "leaguesports.co", domain_expiry: new Date("2027-06-15"), status: "active", last_activity: new Date("2026-03-31") },
+    { entity: "LSC" as const, email_address: "anuj@leaguesports.co", owner_name: "Anuj Kumar Singh", domain: "leaguesports.co", domain_expiry: new Date("2027-06-15"), status: "active", last_activity: new Date("2026-03-31") },
+    { entity: "LSC" as const, email_address: "arvind@leaguesports.co", owner_name: "Arvind Verma", domain: "leaguesports.co", domain_expiry: new Date("2027-06-15"), status: "active", last_activity: new Date("2026-03-30") },
+    { entity: "TBR" as const, email_address: "racing@teambluerising.com", owner_name: "TBR Operations", domain: "teambluerising.com", domain_expiry: new Date("2026-12-01"), status: "active", last_activity: new Date("2026-03-28") },
+    { entity: "TBR" as const, email_address: "sponsors@teambluerising.com", owner_name: "TBR Sponsorships", domain: "teambluerising.com", domain_expiry: new Date("2026-12-01"), status: "inactive", last_activity: new Date("2025-11-15") },
+    { entity: "FSP" as const, email_address: "hello@futureofsports.io", owner_name: "FSP General", domain: "futureofsports.io", domain_expiry: new Date("2026-05-10"), status: "active", last_activity: new Date("2026-03-30") },
+    { entity: "FSP" as const, email_address: "support@futureofsports.io", owner_name: "FSP Support", domain: "futureofsports.io", domain_expiry: new Date("2026-05-10"), status: "suspended" },
+  ]
+  for (const e of emails) { await prisma.companyEmail.upsert({ where: { email_address: e.email_address }, update: e, create: e }) }
+  console.log(`Created ${emails.length} company emails`)
+
+  // ─── KYC Documents ───────────────────────────────────────────────────────
+  const kycDocs = [
+    { entity: "LSC" as const, jurisdiction: "UAE" as const, document_type: "Trade License", document_name: "LSC Dubai DED Trade License 2026", status: "VERIFIED" as const, expiry_date: new Date("2027-03-31"), verified_by: arvind.id, verified_at: new Date("2026-03-01") },
+    { entity: "LSC" as const, jurisdiction: "UAE" as const, document_type: "Certificate of Incorporation", document_name: "LSC Memorandum of Association", status: "VERIFIED" as const },
+    { entity: "LSC" as const, jurisdiction: "UAE" as const, document_type: "Passport Copy", document_name: "Director passport — AK", status: "VERIFIED" as const, expiry_date: new Date("2030-08-15") },
+    { entity: "TBR" as const, jurisdiction: "UAE" as const, document_type: "Trade License", document_name: "TBR DMCC Trade License 2026", status: "VERIFIED" as const, expiry_date: new Date("2027-01-15") },
+    { entity: "TBR" as const, jurisdiction: "UAE" as const, document_type: "Sports Authority License", document_name: "E1 Championship Team License", status: "COLLECTED" as const, expiry_date: new Date("2026-12-31"), notes: "Awaiting verification from authority" },
+    { entity: "FSP" as const, jurisdiction: "UAE" as const, document_type: "Trade License", document_name: "FSP DMCC Free Zone License", status: "VERIFIED" as const, expiry_date: new Date("2026-12-31") },
+    { entity: "FSP" as const, jurisdiction: "INDIA" as const, document_type: "Certificate of Incorporation", document_name: "FSP India Pvt Ltd — MCA Certificate", status: "VERIFIED" as const },
+    { entity: "FSP" as const, jurisdiction: "INDIA" as const, document_type: "GST Certificate", document_name: "FSP India GST Registration", status: "EXPIRED" as const, expiry_date: new Date("2026-01-31"), notes: "GST certificate lapsed — needs immediate renewal" },
+    { entity: "LSC" as const, jurisdiction: "CAYMAN" as const, document_type: "Registered Agent Agreement", document_name: "Cayman Islands RA Agreement", status: "NEEDS_RENEWAL" as const, expiry_date: new Date("2026-03-01") },
+  ]
+  for (const k of kycDocs) { await prisma.kycDocument.create({ data: k }) }
+  console.log(`Created ${kycDocs.length} KYC documents`)
+
+  // ─── Admin Accounts ──────────────────────────────────────────────────────
+  const adminAccts = [
+    { entity: "LSC" as const, platform_name: "Google Workspace", platform_url: "https://admin.google.com", account_holder: "Adi K Mishra", access_level: "Super Admin", two_factor_enabled: true, recovery_documented: true, last_verified: new Date("2026-03-20") },
+    { entity: "LSC" as const, platform_name: "Neon Database", platform_url: "https://console.neon.tech", account_holder: "Anuj Kumar Singh", access_level: "Owner", two_factor_enabled: true, recovery_documented: true, last_verified: new Date("2026-03-25") },
+    { entity: "LSC" as const, platform_name: "Vercel", platform_url: "https://vercel.com", account_holder: "Anuj Kumar Singh", access_level: "Owner", two_factor_enabled: true, recovery_documented: false, last_verified: new Date("2026-03-25") },
+    { entity: "LSC" as const, platform_name: "AWS (S3)", platform_url: "https://console.aws.amazon.com", account_holder: "Anuj Kumar Singh", access_level: "IAM Admin", two_factor_enabled: true, recovery_documented: true, last_verified: new Date("2026-03-20") },
+    { entity: "LSC" as const, platform_name: "GitHub", platform_url: "https://github.com/k0sanuj", account_holder: "Anuj Kumar Singh", access_level: "Owner", two_factor_enabled: true, recovery_documented: true, last_verified: new Date("2026-03-28") },
+    { entity: "TBR" as const, platform_name: "E1 Portal", platform_url: "https://portal.e1series.com", account_holder: "Adi K Mishra", access_level: "Team Admin", two_factor_enabled: false, recovery_documented: false, last_verified: new Date("2025-11-01"), notes: "2FA not enabled — security risk" },
+    { entity: "FSP" as const, platform_name: "App Store Connect", platform_url: "https://appstoreconnect.apple.com", account_holder: "Adi K Mishra", access_level: "Admin", two_factor_enabled: true, recovery_documented: true, last_verified: new Date("2026-02-15") },
+    { entity: "FSP" as const, platform_name: "Google Play Console", platform_url: "https://play.google.com/console", account_holder: "Adi K Mishra", access_level: "Owner", two_factor_enabled: true, recovery_documented: false },
+    { entity: "LSC" as const, platform_name: "GoDaddy (Domains)", platform_url: "https://godaddy.com", account_holder: "Adi K Mishra", access_level: "Owner", two_factor_enabled: false, recovery_documented: false, notes: "Multiple domains — leaguesports.co, teambluerising.com, futureofsports.io" },
+  ]
+  for (const a of adminAccts) { await prisma.adminAccount.create({ data: a }) }
+  console.log(`Created ${adminAccts.length} admin accounts`)
+
+  // ─── Litigation Cases ────────────────────────────────────────────────────
+  const litCase1 = await prisma.litigationCase.create({ data: {
+    case_name: "LSC vs. Vaunt Technologies — IP Dispute", case_number: "DIFC-2026-0142", jurisdiction: "UAE", court_tribunal: "DIFC Courts", entity: "LSC", plaintiff: "League Sports Co LLC", defendant: "Vaunt Technologies FZ-LLC", status: "FILED", filing_date: new Date("2026-02-15"), next_hearing: new Date("2026-04-20"), assigned_counsel: "Arvind Verma", external_counsel: "Al Tamimi & Company", estimated_liability: 350000, legal_fees_to_date: 45000, projected_total_cost: 120000, assigned_to: arvind.id,
+  }})
+  await prisma.litigationEvent.createMany({ data: [
+    { case_id: litCase1.id, event_type: "filing", title: "Case filed with DIFC Courts", event_date: new Date("2026-02-15") },
+    { case_id: litCase1.id, event_type: "hearing", title: "Preliminary hearing — judge assigned", event_date: new Date("2026-03-10") },
+    { case_id: litCase1.id, event_type: "document", title: "Statement of claim submitted", event_date: new Date("2026-03-18") },
+  ]})
+
+  const litCase2 = await prisma.litigationCase.create({ data: {
+    case_name: "TBR — Venue Damage Claim (Monaco)", case_number: "MC-CIV-2026-0089", jurisdiction: "GLOBAL", court_tribunal: "Monaco Civil Court", entity: "TBR", plaintiff: "Monaco Port Authority", defendant: "Team Blue Rising Ltd", status: "DISCOVERY", filing_date: new Date("2026-01-20"), next_hearing: new Date("2026-05-12"), assigned_counsel: "External — Monaco firm", estimated_liability: 180000, legal_fees_to_date: 22000, projected_total_cost: 60000, assigned_to: ak.id,
+  }})
+  await prisma.litigationEvent.create({ data: { case_id: litCase2.id, event_type: "filing", title: "Claim received from port authority", event_date: new Date("2026-01-20") }})
+
+  console.log("Created 2 litigation cases with events")
+
+  // ─── Subsidies ───────────────────────────────────────────────────────────
+  const subsidies = [
+    { title: "UAE SME Growth Accelerator Grant", entity: "LSC" as const, jurisdiction: "UAE" as const, source: "Dubai SME (Mohammed Bin Rashid Establishment)", status: "APPROVED" as const, amount: 150000, conditions: "Must maintain UAE headcount of 10+ for 2 years", approval_date: new Date("2026-01-10"), application_date: new Date("2025-09-15") },
+    { title: "Sports Tech Innovation Fund", entity: "FSP" as const, jurisdiction: "UAE" as const, source: "Dubai Future Foundation", status: "APPLYING" as const, amount: 500000, application_date: new Date("2026-03-01"), notes: "Application submitted — awaiting review committee" },
+    { title: "India Startup India Recognition", entity: "FSP" as const, jurisdiction: "INDIA" as const, source: "DPIIT — Ministry of Commerce", status: "IDENTIFIED" as const, amount: 0, notes: "Tax benefits + funding eligibility — need to apply", website_url: "https://www.startupindia.gov.in" },
+    { title: "E1 Championship Host City Subsidy", entity: "TBR" as const, jurisdiction: "UAE" as const, source: "Abu Dhabi Sports Council", status: "DISBURSED" as const, amount: 250000, approval_date: new Date("2025-11-01"), disbursement_date: new Date("2026-01-15"), conditions: "Must host minimum 2 race events in Abu Dhabi" },
+  ]
+  for (const s of subsidies) { await prisma.subsidy.create({ data: s }) }
+  console.log(`Created ${subsidies.length} subsidies`)
+
+  // ─── Clickwrap Acceptances ───────────────────────────────────────────────
+  const clickwraps = [
+    { person_name: "Saurav Pilot", person_email: "saurav@teambluerising.com", agreement_title: "Arena Master Service Agreement", agreement_version: 2, ip_address: "203.45.67.89", user_agent: "Mozilla/5.0", entity: "TBR" as const },
+    { person_name: "JP Deal Partner", person_email: "jp@partner.co", agreement_title: "Arena Master Service Agreement", agreement_version: 2, ip_address: "103.21.44.12", entity: "FSP" as const },
+    { person_name: "Red Bull Racing UAE", person_email: "partnerships@redbull.ae", agreement_title: "Sponsorship Terms & Conditions", agreement_version: 1, ip_address: "185.22.33.44", entity: "TBR" as const },
+    { person_name: "Anuj Kumar Singh", person_email: "anuj@leaguesports.co", agreement_title: "Arena Ads Platform Terms", agreement_version: 1, ip_address: "86.98.12.34", entity: "FSP" as const },
+    { person_name: "Vendor XYZ LLC", person_email: "accounts@vendorxyz.com", agreement_title: "Arena Master Service Agreement", agreement_version: 2, ip_address: "45.67.89.12", entity: "LSC" as const },
+  ]
+  for (const c of clickwraps) { await prisma.clickwrapAcceptance.create({ data: c }) }
+  console.log(`Created ${clickwraps.length} clickwrap acceptances`)
+
+  // ─── Detected Invoices (simulated) ───────────────────────────────────────
+  const invoices = [
+    { vendor_name: "Al Tamimi & Company", amount: 15000, currency: "AED", invoice_date: new Date("2026-03-25"), entity: "LSC" as const, category: "Legal Fees", verification_status: "verified", math_check_passed: true, routed_to_finance: false },
+    { vendor_name: "Monaco Port Authority", amount: 8500, currency: "EUR", invoice_date: new Date("2026-03-20"), entity: "TBR" as const, category: "Venue Costs", verification_status: "verified", math_check_passed: true, routed_to_finance: true },
+    { vendor_name: "AWS", amount: 2340, currency: "USD", invoice_date: new Date("2026-03-28"), entity: "FSP" as const, category: "SaaS/Infrastructure", verification_status: "pending", math_check_passed: false, notes: "Line items don't sum to total — needs manual review" },
+  ]
+  for (const inv of invoices) { await prisma.detectedInvoice.create({ data: inv }) }
+  console.log(`Created ${invoices.length} detected invoices`)
+
+  // ─── Audit Report (sample) ──────────────────────────────────────────────
+  await prisma.auditReport.create({ data: {
+    audit_type: "full_15_day", entity: "LSC", findings: {
+      compliance: { total: 4, compliant: 3, at_risk: 1, details: ["Cayman registered agent expired"] },
+      kyc: { total: 3, compliant: 3, at_risk: 0 },
+      offices: { total: 1, compliant: 1, at_risk: 0 },
+      emails: { total: 4, compliant: 4, at_risk: 0 },
+      admin_accounts: { total: 5, compliant: 3, at_risk: 2, details: ["GoDaddy — no 2FA", "Vercel — recovery not documented"] },
+    },
+    summary: "LSC: 2 at-risk items found — Cayman RA expired, GoDaddy lacks 2FA", risk_items: 3, compliant_items: 14, total_items: 17, run_by: "compliance-audit",
+  }})
+  await prisma.auditReport.create({ data: {
+    audit_type: "full_15_day", findings: {
+      LSC: { risk: 3, compliant: 14, total: 17 },
+      TBR: { risk: 2, compliant: 5, total: 7 },
+      FSP: { risk: 4, compliant: 6, total: 10 },
+    },
+    summary: "Cross-entity audit: 9 total risk items. FSP India compliance not started. TBR E1 portal lacks 2FA.", risk_items: 9, compliant_items: 25, total_items: 34, run_by: "compliance-audit",
+  }})
+  console.log("Created 2 audit reports")
+
+  // ─── Agent Activity Log (sample) ────────────────────────────────────────
+  const agentLogs = [
+    { agent_id: "compliance-audit", agent_name: "Compliance Audit Agent", action: "run_started", details: { trigger: "manual" } },
+    { agent_id: "compliance-audit", agent_name: "Compliance Audit Agent", action: "entity_scanned", details: { entity: "LSC", items: 17, risk: 3 } },
+    { agent_id: "compliance-audit", agent_name: "Compliance Audit Agent", action: "entity_scanned", details: { entity: "TBR", items: 7, risk: 2 } },
+    { agent_id: "compliance-audit", agent_name: "Compliance Audit Agent", action: "entity_scanned", details: { entity: "FSP", items: 10, risk: 4 } },
+    { agent_id: "compliance-audit", agent_name: "Compliance Audit Agent", action: "run_completed", details: { totalRisk: 9, totalItems: 34 } },
+    { agent_id: "compliance", agent_name: "Compliance Agent", action: "run_started", details: {} },
+    { agent_id: "compliance", agent_name: "Compliance Agent", action: "record_flagged", details: { entity: "LSC", jurisdiction: "CAYMAN", issue: "Registered agent expired" } },
+    { agent_id: "compliance", agent_name: "Compliance Agent", action: "notification_sent", details: { to: "arvind@leaguesports.co", reason: "TBR office renewal in 30 days" } },
+    { agent_id: "email-inbox.invoice-detection", agent_name: "Invoice Detection Agent", action: "invoice_detected", details: { vendor: "Al Tamimi & Company", amount: 15000, entity: "LSC" } },
+    { agent_id: "email-inbox.invoice-detection", agent_name: "Invoice Detection Agent", action: "invoice_detected", details: { vendor: "Monaco Port Authority", amount: 8500, entity: "TBR", routed_to_finance: true } },
+    { agent_id: "agreement-analyzer", agent_name: "Agreement Analyzer Agent", action: "document_analyzed", details: { documentId: "sample", category: "SPONSORSHIP", clauses_extracted: 12 } },
+  ]
+  for (const log of agentLogs) { await prisma.agentActivityLog.create({ data: log as any }) }
+  console.log(`Created ${agentLogs.length} agent activity logs`)
+
+  // ─── Agent Messages (sample flows) ──────────────────────────────────────
+  const agentMsgs = [
+    { from_agent: "email-inbox.invoice-detection", to_agent: "orchestrator", intent: "invoice_verified", payload: { vendor: "Al Tamimi", amount: 15000, entity: "LSC" }, priority: "NORMAL" as const, responded: true },
+    { from_agent: "orchestrator", to_agent: "compliance", intent: "compliance_check", payload: { entity: "LSC", trigger: "new_document" }, priority: "NORMAL" as const, responded: true },
+    { from_agent: "compliance", to_agent: "orchestrator", intent: "compliance_result", payload: { status: "ok", findings: 0 }, priority: "NORMAL" as const, responded: true },
+    { from_agent: "orchestrator", to_agent: "agreement-analyzer", intent: "analyze_document", payload: { documentId: "sample", title: "Red Bull Sponsorship" }, priority: "HIGH" as const, responded: true },
+    { from_agent: "agreement-analyzer", to_agent: "orchestrator", intent: "analysis_result", payload: { category: "SPONSORSHIP", clauses: 12, unusual: 1 }, priority: "NORMAL" as const, responded: true },
+    { from_agent: "litigation.finance-liaison", to_agent: "orchestrator", intent: "exposure_update", payload: { caseId: "sample", liability: 350000 }, priority: "HIGH" as const, responded: false },
+    { from_agent: "orchestrator", to_agent: "compliance-audit", intent: "run_audit", payload: { type: "full_15_day" }, priority: "NORMAL" as const, responded: true },
+    { from_agent: "compliance-audit", to_agent: "orchestrator", intent: "audit_complete", payload: { risk: 9, compliant: 25, total: 34 }, priority: "NORMAL" as const, responded: true },
+  ]
+  for (const msg of agentMsgs) { await prisma.agentMessage.create({ data: msg as any }) }
+  console.log(`Created ${agentMsgs.length} agent messages`)
+
   console.log("Seeding complete!")
 }
 

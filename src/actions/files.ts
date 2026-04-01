@@ -3,6 +3,7 @@
 import { requireSession } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { uploadToS3, deleteFromS3, getS3Key } from "@/lib/s3"
+import { runAgent } from "@/lib/agents/orchestrator"
 import { revalidatePath } from "next/cache"
 
 export async function uploadDocumentFile(formData: FormData) {
@@ -25,6 +26,16 @@ export async function uploadDocumentFile(formData: FormData) {
       where: { id: documentId },
       data: { file_url: url },
     })
+
+    // Auto-analyze uploaded document
+    try {
+      const doc = await prisma.legalDocument.findUnique({ where: { id: documentId }, select: { title: true, notes: true, entity: true } })
+      if (doc) {
+        await runAgent('agreement-analyzer', { documentId, content: doc.notes ?? doc.title })
+      }
+    } catch (e) {
+      console.error('Agent analysis failed (non-blocking):', e)
+    }
 
     revalidatePath(`/legal/documents/${documentId}`)
     revalidatePath("/legal/documents")

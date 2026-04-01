@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { requireSession } from "@/lib/auth"
 import { ENTITIES, formatAED, formatDate } from "@/lib/constants"
+import { CreateLitigationForm } from "@/components/legal/create-litigation-form"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
@@ -129,11 +130,14 @@ export default async function LitigationPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Litigation Tracker</h1>
-        <p className="text-muted-foreground">
-          Track and manage all litigation cases across entities
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Litigation Tracker</h1>
+          <p className="text-muted-foreground">
+            Track and manage all litigation cases across entities
+          </p>
+        </div>
+        <CreateLitigationForm />
       </div>
 
       {/* Summary cards */}

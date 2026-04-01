@@ -69,6 +69,8 @@ export const PAGE_PERMISSIONS: Record<string, UserRole[]> = {
   "/legal/clickwrap": ADMIN_ROLES,
   "/legal/audit-reports": LEGAL_WRITE_ROLES,
   "/legal/agent-architecture": ADMIN_ROLES,
+  "/legal/file-naming": ADMIN_ROLES,
+  "/legal/table-config": LEGAL_WRITE_ROLES,
 }
 
 export function canAccessPage(role: UserRole, path: string): boolean {
@@ -131,4 +133,6 @@ export const NAV_ITEMS: NavItem[] = [
 
   // System
   { label: "Agent Architecture", href: "/legal/agent-architecture", icon: "Bot", group: "System" },
+  { label: "File Naming", href: "/legal/file-naming", icon: "FileSignature", group: "System" },
+  { label: "Table Config", href: "/legal/table-config", icon: "Settings2", group: "System" },
 ]

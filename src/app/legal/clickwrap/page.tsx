@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { requireSession } from "@/lib/auth"
 import { formatDate, ENTITIES } from "@/lib/constants"
+import { CreateClickwrapForm } from "@/components/legal/create-clickwrap-form"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import {
@@ -83,13 +84,16 @@ export default async function ClickwrapPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">
-          Clickwrap Acceptance Tracker
-        </h1>
-        <p className="text-muted-foreground">
-          Track digital agreement acceptances across all entities
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Clickwrap Acceptance Tracker
+          </h1>
+          <p className="text-muted-foreground">
+            Track digital agreement acceptances across all entities
+          </p>
+        </div>
+        <CreateClickwrapForm />
       </div>
 
       {/* Summary cards */}

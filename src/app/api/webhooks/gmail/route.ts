@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { getRecentMessages } from '@/lib/gmail'
 import { notifyAdmins } from '@/actions/notifications'
+import { runAgent } from '@/lib/agents/orchestrator'
 
 export async function POST(request: Request) {
   const body = await request.json()
@@ -53,6 +54,17 @@ export async function POST(request: Request) {
         `From: ${msg.from}`,
         '/legal/compliance'
       )
+
+      // Run invoice detection agent on the email
+      try {
+        await runAgent('email-inbox.invoice-detection', {
+          emailBody: msg.snippet,
+          from: msg.from,
+          subject: msg.subject,
+        })
+      } catch (e) {
+        console.error('Invoice detection agent failed (non-blocking):', e)
+      }
     }
   } catch (error) {
     console.error('Gmail webhook error:', error)

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { requireSession } from "@/lib/auth"
 import { ENTITIES, formatDate } from "@/lib/constants"
+import { CreateKycForm } from "@/components/legal/create-kyc-form"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -139,12 +140,15 @@ export default async function KycPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">KYC Tracker</h1>
-        <p className="text-muted-foreground">
-          Know Your Customer document management across entities and
-          jurisdictions
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">KYC Tracker</h1>
+          <p className="text-muted-foreground">
+            Know Your Customer document management across entities and
+            jurisdictions
+          </p>
+        </div>
+        <CreateKycForm />
       </div>
 
       {/* Summary cards */}
