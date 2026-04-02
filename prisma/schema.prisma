@@ -861,6 +861,24 @@ model AgentMessage {
   @@index([intent])
 }
 
+// ─── Project Checklist ───────────────────────────────────────────────────────
+
+model ProjectChecklist {
+  id             String   @id @default(uuid())
+  title          String
+  done           Boolean  @default(false)
+  priority       Priority @default(MEDIUM)
+  category       String   @default("General")
+  dependency_ids String[]
+  notes          String?
+  sort_order     Int      @default(0)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@index([done, priority])
+  @@index([category])
+}
+
 // ─── Dashboard Config ────────────────────────────────────────────────────────
 
 model DashboardTableConfig {

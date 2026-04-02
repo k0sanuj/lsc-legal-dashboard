@@ -37,8 +37,9 @@ import {
 } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
-import type { UserRole } from "@/generated/prisma/client"
+import type { UserRole, Priority } from "@/generated/prisma/client"
 import { getNavigationItems } from "@/lib/permissions"
+import { SidebarChecklist } from "./sidebar-checklist"
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   LayoutDashboard,
@@ -70,12 +71,24 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Settings2,
 }
 
+interface ChecklistItem {
+  id: string
+  title: string
+  done: boolean
+  priority: Priority
+  category: string
+  dependency_ids: string[]
+  notes: string | null
+  sort_order: number
+}
+
 interface LegalSidebarProps {
   userRole: UserRole
   userName: string
+  checklistItems: ChecklistItem[]
 }
 
-export function LegalSidebar({ userRole, userName }: LegalSidebarProps) {
+export function LegalSidebar({ userRole, userName, checklistItems }: LegalSidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
 
@@ -151,6 +164,9 @@ export function LegalSidebar({ userRole, userName }: LegalSidebarProps) {
           </div>
         ))}
       </nav>
+
+      {/* Project Checklist */}
+      <SidebarChecklist items={checklistItems} collapsed={collapsed} />
 
       {/* Footer */}
       <div className="border-t border-sidebar-border p-3 space-y-2">

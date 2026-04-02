@@ -876,6 +876,83 @@ async function main() {
   for (const msg of agentMsgs) { await prisma.agentMessage.create({ data: msg as any }) }
   console.log(`Created ${agentMsgs.length} agent messages`)
 
+  // ─── Project Checklist ────────────────────────────────────────────────────
+  await prisma.projectChecklist.deleteMany()
+
+  const checklistItems = [
+    // Core Pages — all done
+    { title: "Command Center Dashboard", done: true, priority: "CRITICAL" as const, category: "Core Pages", sort_order: 1 },
+    { title: "Documents Management & Lifecycle", done: true, priority: "CRITICAL" as const, category: "Core Pages", sort_order: 2 },
+    { title: "Document Detail View (versions, timeline, signatures)", done: true, priority: "CRITICAL" as const, category: "Core Pages", sort_order: 3 },
+    { title: "Signature Kanban Board (drag-to-update)", done: true, priority: "CRITICAL" as const, category: "Core Pages", sort_order: 4 },
+    { title: "AI Contract Generator (Gemini 2.5 Pro)", done: true, priority: "HIGH" as const, category: "Core Pages", sort_order: 5 },
+    { title: "Contract Templates Library", done: true, priority: "HIGH" as const, category: "Core Pages", sort_order: 6 },
+    { title: "Expirations Pipeline (14/30/60/90-day tiers)", done: true, priority: "CRITICAL" as const, category: "Core Pages", sort_order: 7 },
+    { title: "Compliance Deadlines (multi-jurisdiction)", done: true, priority: "CRITICAL" as const, category: "Core Pages", sort_order: 8 },
+    { title: "ESOP Management (grants, vesting, pools)", done: true, priority: "HIGH" as const, category: "Core Pages", sort_order: 9 },
+    { title: "Policy Documents & Acknowledgments", done: true, priority: "MEDIUM" as const, category: "Core Pages", sort_order: 10 },
+    { title: "Legal Issues & SLA Tracking", done: true, priority: "HIGH" as const, category: "Core Pages", sort_order: 11 },
+    { title: "85-Item Legal Tracker (Kanban + table)", done: true, priority: "CRITICAL" as const, category: "Core Pages", sort_order: 12 },
+    { title: "Payment Cycles & Finance Sync", done: true, priority: "HIGH" as const, category: "Core Pages", sort_order: 13 },
+
+    // Extended Modules — all done
+    { title: "Agreements Page", done: true, priority: "HIGH" as const, category: "Extended Modules", sort_order: 14 },
+    { title: "Litigation Case Management", done: true, priority: "HIGH" as const, category: "Extended Modules", sort_order: 15 },
+    { title: "KYC Document Tracking", done: true, priority: "HIGH" as const, category: "Extended Modules", sort_order: 16 },
+    { title: "Admin Account Inventory", done: true, priority: "MEDIUM" as const, category: "Extended Modules", sort_order: 17 },
+    { title: "Clickwrap Acceptance Tracking", done: true, priority: "MEDIUM" as const, category: "Extended Modules", sort_order: 18 },
+    { title: "Subsidies & Grants Management", done: true, priority: "MEDIUM" as const, category: "Extended Modules", sort_order: 19 },
+    { title: "Email Intelligence (invoice detection)", done: true, priority: "HIGH" as const, category: "Extended Modules", sort_order: 20 },
+    { title: "Compliance Audit Reports", done: true, priority: "HIGH" as const, category: "Extended Modules", sort_order: 21 },
+    { title: "Data Protection Records", done: true, priority: "HIGH" as const, category: "Extended Modules", sort_order: 22 },
+    { title: "Registered Office Agreements", done: true, priority: "MEDIUM" as const, category: "Extended Modules", sort_order: 23 },
+    { title: "Company Email Management", done: true, priority: "LOW" as const, category: "Extended Modules", sort_order: 24 },
+    { title: "Document Review Queue", done: true, priority: "HIGH" as const, category: "Extended Modules", sort_order: 25 },
+
+    // Infrastructure — all done
+    { title: "Authentication & RBAC (8 roles)", done: true, priority: "CRITICAL" as const, category: "Infrastructure", sort_order: 26 },
+    { title: "Dark Mode UI Theme (slate-950)", done: true, priority: "HIGH" as const, category: "Infrastructure", sort_order: 27 },
+    { title: "Notification System (bell + polling)", done: true, priority: "HIGH" as const, category: "Infrastructure", sort_order: 28 },
+    { title: "Prisma Schema (25+ models)", done: true, priority: "CRITICAL" as const, category: "Infrastructure", sort_order: 29 },
+    { title: "Server Actions Architecture", done: true, priority: "CRITICAL" as const, category: "Infrastructure", sort_order: 30 },
+    { title: "Agent System (orchestrator + 4 agents)", done: true, priority: "HIGH" as const, category: "Infrastructure", sort_order: 31 },
+    { title: "Agent Architecture Visualization", done: true, priority: "LOW" as const, category: "Infrastructure", sort_order: 32 },
+    { title: "File Naming Standards Engine", done: true, priority: "MEDIUM" as const, category: "Infrastructure", sort_order: 33 },
+    { title: "Table Configuration System", done: true, priority: "MEDIUM" as const, category: "Infrastructure", sort_order: 34 },
+    { title: "Recharts Dashboard Visualizations", done: true, priority: "HIGH" as const, category: "Infrastructure", sort_order: 35 },
+    { title: "Notes & Comments on Documents", done: true, priority: "MEDIUM" as const, category: "Infrastructure", sort_order: 36 },
+
+    // Integrations — pending
+    { title: "HelloSign E-Signature Live Integration", done: false, priority: "CRITICAL" as const, category: "Integrations", sort_order: 37, notes: "API scaffolded, needs live API keys + webhook URL" },
+    { title: "S3 File Storage Live Configuration", done: false, priority: "CRITICAL" as const, category: "Integrations", sort_order: 38, notes: "Upload logic built, needs AWS credentials + bucket" },
+    { title: "Gmail OAuth & Email Routing", done: false, priority: "HIGH" as const, category: "Integrations", sort_order: 39, notes: "OAuth flow built, needs Google Cloud project + credentials" },
+    { title: "Vercel Cron Jobs Deployment", done: false, priority: "HIGH" as const, category: "Integrations", sort_order: 40, dependency_ids: ["deploy-prod"], notes: "Cron routes built — needs vercel.json cron config on deploy" },
+    { title: "Finance Module Bi-directional Sync", done: false, priority: "CRITICAL" as const, category: "Integrations", sort_order: 41, notes: "CrossModuleEvent table ready, needs finance module webhook handler" },
+    { title: "Cross-Module Event Processing", done: false, priority: "HIGH" as const, category: "Integrations", sort_order: 42, notes: "Event table exists, needs consumer/processor service" },
+
+    // Data & Content — pending
+    { title: "Multi-Entity Data Population (all 9 entities)", done: false, priority: "HIGH" as const, category: "Data & Content", sort_order: 43, notes: "Schema supports all entities, needs real compliance records per entity" },
+    { title: "Real Compliance Deadlines Import", done: false, priority: "CRITICAL" as const, category: "Data & Content", sort_order: 44, notes: "Seed has demo data — needs real UAE/Delaware/Global deadlines" },
+    { title: "Contract Templates Content (legal-reviewed)", done: false, priority: "HIGH" as const, category: "Data & Content", sort_order: 45, notes: "Template system built, needs Arvind to provide reviewed templates" },
+    { title: "ESOP Pool Real Data Entry", done: false, priority: "HIGH" as const, category: "Data & Content", sort_order: 46, notes: "Awaiting CF2 ESOP Plan Document completion" },
+    { title: "Calendar Integration (Google Calendar)", done: false, priority: "MEDIUM" as const, category: "Data & Content", sort_order: 47 },
+
+    // Deployment & Ops — pending
+    { title: "Production Deployment & DNS", done: false, priority: "CRITICAL" as const, category: "Deployment & Ops", sort_order: 48, notes: "Vercel project exists, needs domain + env vars" },
+    { title: "Environment Variables Configuration", done: false, priority: "CRITICAL" as const, category: "Deployment & Ops", sort_order: 49, notes: "DATABASE_URL, GEMINI_API_KEY, HELLOSIGN, S3, GMAIL keys needed" },
+    { title: "User Acceptance Testing", done: false, priority: "CRITICAL" as const, category: "Deployment & Ops", sort_order: 50, notes: "AK, Arvind, Anuj need to test all flows" },
+    { title: "Mobile Responsive Optimization", done: false, priority: "MEDIUM" as const, category: "Deployment & Ops", sort_order: 51 },
+    { title: "Performance & Bundle Optimization", done: false, priority: "MEDIUM" as const, category: "Deployment & Ops", sort_order: 52 },
+    { title: "Security Audit (OWASP Top 10)", done: false, priority: "HIGH" as const, category: "Deployment & Ops", sort_order: 53 },
+    { title: "Export Functionality (CSV/PDF reports)", done: false, priority: "MEDIUM" as const, category: "Deployment & Ops", sort_order: 54 },
+    { title: "User Management Admin Panel", done: false, priority: "HIGH" as const, category: "Deployment & Ops", sort_order: 55 },
+  ]
+
+  for (const item of checklistItems) {
+    await prisma.projectChecklist.create({ data: item as any })
+  }
+  console.log(`Created ${checklistItems.length} project checklist items`)
+
   console.log("Seeding complete!")
 }
 
