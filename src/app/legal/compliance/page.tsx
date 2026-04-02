@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { requireSession } from "@/lib/auth"
-import { formatDate, daysUntil } from "@/lib/constants"
+import { formatDate, daysUntil, ENTITIES } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -48,8 +48,15 @@ const JURISDICTION_LABELS: Record<Jurisdiction, string> = {
   CAYMAN: "Cayman Islands",
 }
 
-export default async function CompliancePage() {
+export default async function CompliancePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
   await requireSession()
+
+  const params = await searchParams
+  const entityFilter = typeof params.entity === "string" ? params.entity : ""
 
   const deadlines = await prisma.complianceDeadline.findMany({
     orderBy: { deadline_date: "asc" },
@@ -164,6 +171,36 @@ export default async function CompliancePage() {
           </span>
         </div>
       )}
+
+      {/* Company filter */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-sm font-medium text-muted-foreground mr-2">Company</span>
+        <a
+          href="/legal/compliance"
+          className={cn(
+            "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+            !entityFilter
+              ? "border-primary bg-primary/15 text-primary"
+              : "border-border/50 text-muted-foreground hover:text-foreground hover:border-border"
+          )}
+        >
+          All
+        </a>
+        {ENTITIES.map((ent) => (
+          <a
+            key={ent.value}
+            href={`/legal/compliance?entity=${ent.value}`}
+            className={cn(
+              "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+              entityFilter === ent.value
+                ? "border-primary bg-primary/15 text-primary"
+                : "border-border/50 text-muted-foreground hover:text-foreground hover:border-border"
+            )}
+          >
+            {ent.label}
+          </a>
+        ))}
+      </div>
 
       <Card>
         <CardHeader>

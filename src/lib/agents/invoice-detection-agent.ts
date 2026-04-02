@@ -24,7 +24,7 @@ interface DetectedInvoiceData {
 
 const SYSTEM_PROMPT = `You are an invoice detection specialist for League Sports Co (LSC), a UAE-based sports and entertainment holding company. LSC's primary currency is AED.
 
-Entities: LSC, TBR (Team Blue Rising — E1 racing), FSP (Future of Sports — tech), BOWLING, SQUASH, BASKETBALL, BEER_PONG, PADEL, FOUNDATION.
+Entities: LSC, TBR (Team Blue Rising — E1 racing), FSP (Future of Sports — tech), BOWLING, SQUASH, BASKETBALL, BEER_PONG, FOUNDATION.
 
 Analyze the email below and determine if it contains or references an invoice. Consider:
 - Direct invoice attachments
@@ -41,7 +41,7 @@ Respond ONLY with valid JSON (no markdown, no explanation):
   "amount": numeric_amount_or_null,
   "currency": "AED/USD/EUR/GBP or null",
   "invoiceDate": "YYYY-MM-DD or null",
-  "entity": "LSC|TBR|FSP|BOWLING|SQUASH|BASKETBALL|BEER_PONG|PADEL|FOUNDATION or null",
+  "entity": "LSC|TBR|FSP|BOWLING|SQUASH|BASKETBALL|BEER_PONG|FOUNDATION or null",
   "category": "category description or null",
   "lineItems": [{ "description": "string", "amount": number }]
 }`
@@ -221,7 +221,6 @@ function isValidEntity(value: string | null): boolean {
     'SQUASH',
     'BASKETBALL',
     'BEER_PONG',
-    'PADEL',
     'FOUNDATION',
   ]
   return validEntities.includes(value)

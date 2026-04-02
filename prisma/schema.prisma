@@ -17,7 +17,6 @@ enum Entity {
   SQUASH
   BASKETBALL
   BEER_PONG
-  PADEL
   FOUNDATION
 }
 

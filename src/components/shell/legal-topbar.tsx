@@ -16,7 +16,7 @@ const ROUTE_LABELS: Record<string, string> = {
   "/legal/compliance/data-protection": "Data Protection",
   "/legal/compliance/registered-offices": "Registered Offices",
   "/legal/compliance/emails": "Company Emails",
-  "/legal/esop": "ESOP Contracts",
+  "/legal/esop": "Cap Table",
   "/legal/policies": "Policies",
   "/legal/issues": "Issues",
   "/legal/tracker": "Tracker",

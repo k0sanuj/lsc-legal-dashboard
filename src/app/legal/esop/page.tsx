@@ -104,9 +104,9 @@ export default async function ESOPPage({ searchParams }: { searchParams: Promise
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">ESOP Management</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Cap Table</h1>
         <p className="text-muted-foreground">
-          Employee stock option pool and grant tracking
+          Equity pool, grant tracking, and vesting schedules across entities
         </p>
       </div>
 
@@ -135,20 +135,31 @@ export default async function ESOPPage({ searchParams }: { searchParams: Promise
         })}
       </div>
 
-      {/* Entity filter */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Link href="/legal/esop" className={cn("px-3 py-1.5 rounded-md text-sm transition-colors", !entityFilter && "bg-primary/10 text-primary font-medium")}>All</Link>
+      {/* Company filter — no "All" since that is the default view */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-sm font-medium text-muted-foreground mr-2">Company</span>
         {ENTITIES.map((e) => (
-          <Link key={e.value} href={`/legal/esop?entity=${e.value}`} className={cn("px-3 py-1.5 rounded-md text-sm transition-colors", entityFilter === e.value ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground")}>{e.label}</Link>
+          <Link
+            key={e.value}
+            href={entityFilter === e.value ? "/legal/esop" : `/legal/esop?entity=${e.value}`}
+            className={cn(
+              "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+              entityFilter === e.value
+                ? "border-primary bg-primary/15 text-primary"
+                : "border-border/50 text-muted-foreground hover:text-foreground hover:border-border"
+            )}
+          >
+            {e.label}
+          </Link>
         ))}
       </div>
 
       {/* Grants table */}
       <Card>
         <CardHeader>
-          <CardTitle>Grants</CardTitle>
+          <CardTitle>Equity Grants</CardTitle>
           <CardDescription>
-            All ESOP grants issued to date
+            All equity grants issued to date
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -157,7 +168,7 @@ export default async function ESOPPage({ searchParams }: { searchParams: Promise
               <Users className="h-10 w-10 text-muted-foreground/40" />
               <h3 className="mt-4 text-sm font-medium">No grants issued</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                No ESOP grants have been recorded yet.
+                No equity grants have been recorded yet.
               </p>
             </div>
           ) : (

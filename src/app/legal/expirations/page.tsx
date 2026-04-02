@@ -39,17 +39,27 @@ function urgencyTextClass(days: number): string {
   return "text-blue-400"
 }
 
-export default async function ExpirationsPage() {
+export default async function ExpirationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
   await requireSession()
+
+  const params = await searchParams
+  const entityFilter = typeof params.entity === "string" ? params.entity : ""
 
   const now = new Date()
   const in90d = new Date(now.getTime() + 90 * 86400000)
 
+  const expiryWhere: Record<string, unknown> = {
+    expiry_date: { gte: now, lte: in90d },
+    lifecycle_status: { notIn: ["EXPIRED", "TERMINATED"] },
+  }
+  if (entityFilter) expiryWhere.entity = entityFilter
+
   const documents = await prisma.legalDocument.findMany({
-    where: {
-      expiry_date: { gte: now, lte: in90d },
-      lifecycle_status: { notIn: ["EXPIRED", "TERMINATED"] },
-    },
+    where: expiryWhere,
     orderBy: { expiry_date: "asc" },
     include: { owner: { select: { full_name: true } } },
   })
@@ -100,6 +110,36 @@ export default async function ExpirationsPage() {
         <p className="text-muted-foreground">
           Documents approaching expiry within the next 90 days
         </p>
+      </div>
+
+      {/* Company filter */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-sm font-medium text-muted-foreground mr-2">Company</span>
+        <a
+          href="/legal/expirations"
+          className={cn(
+            "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+            !entityFilter
+              ? "border-primary bg-primary/15 text-primary"
+              : "border-border/50 text-muted-foreground hover:text-foreground hover:border-border"
+          )}
+        >
+          All
+        </a>
+        {ENTITIES.map((ent) => (
+          <a
+            key={ent.value}
+            href={`/legal/expirations?entity=${ent.value}`}
+            className={cn(
+              "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+              entityFilter === ent.value
+                ? "border-primary bg-primary/15 text-primary"
+                : "border-border/50 text-muted-foreground hover:text-foreground hover:border-border"
+            )}
+          >
+            {ent.label}
+          </a>
+        ))}
       </div>
 
       {/* Summary cards */}

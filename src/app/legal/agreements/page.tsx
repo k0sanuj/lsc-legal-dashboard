@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { requireSession } from "@/lib/auth"
 import { formatAED, formatDate, daysUntil } from "@/lib/constants"
-import { ENTITIES, LIFECYCLE_STATUS_LABELS, LIFECYCLE_STATUS_COLORS } from "@/lib/constants"
+import { ENTITIES, LIFECYCLE_STATUS_LABELS } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { LifecycleBadge } from "@/components/legal/lifecycle-badge"
 import { Badge } from "@/components/ui/badge"
@@ -32,6 +32,7 @@ import type {
   LifecycleStatus,
 } from "@/generated/prisma/client"
 import { DocumentCategory as DocumentCategoryEnum } from "@/generated/prisma/enums"
+import { NewAgreementForm } from "@/components/legal/new-agreement-form"
 
 function getEntityLabel(value: string): string {
   return ENTITIES.find((e) => e.value === value)?.label ?? value
@@ -74,20 +75,12 @@ export default async function AgreementsPage({
   const entityFilter = typeof params.entity === "string" ? params.entity : ""
   const categoryFilter = typeof params.category === "string" ? params.category : ""
   const statusFilter = typeof params.status === "string" ? params.status : ""
-  const counterpartyFilter = typeof params.counterparty === "string" ? params.counterparty : ""
 
   const where: Record<string, unknown> = {}
-  if (entityFilter) {
-    where.entity = entityFilter as Entity
-  }
-  if (categoryFilter) {
-    where.category = categoryFilter as DocumentCategory
-  }
+  if (entityFilter) where.entity = entityFilter as Entity
+  if (categoryFilter) where.category = categoryFilter as DocumentCategory
   if (statusFilter && statusFilter in LIFECYCLE_STATUS_LABELS) {
     where.lifecycle_status = statusFilter as LifecycleStatus
-  }
-  if (counterpartyFilter) {
-    where.counterparty = { contains: counterpartyFilter, mode: "insensitive" }
   }
 
   const documents = await prisma.legalDocument.findMany({
@@ -113,7 +106,6 @@ export default async function AgreementsPage({
   const now = new Date()
   const in30d = new Date(now.getTime() + 30 * 86400000)
 
-  // Summary stats
   const totalAgreements = documents.length
   const activeCount = documents.filter(
     (d) => d.lifecycle_status === "ACTIVE" || d.lifecycle_status === "SIGNED"
@@ -127,16 +119,18 @@ export default async function AgreementsPage({
     return sum + recurring + onetime
   }, 0)
 
-  // Get all category values for filter
   const allCategories = Object.keys(DocumentCategoryEnum) as DocumentCategory[]
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Agreements</h1>
-        <p className="text-muted-foreground">
-          Comprehensive agreement management across all entities and categories
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Agreements</h1>
+          <p className="text-muted-foreground">
+            Comprehensive agreement management across all entities and categories
+          </p>
+        </div>
+        <NewAgreementForm />
       </div>
 
       {/* Summary cards */}
@@ -199,96 +193,69 @@ export default async function AgreementsPage({
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground mr-1">Entity:</span>
-        <a
-          href="/legal/agreements"
-          className={cn(
-            "rounded-md border px-3 py-1 text-xs transition-colors",
-            !entityFilter
-              ? "border-blue-500/50 bg-blue-500/10 text-blue-400"
-              : "border-border/50 text-muted-foreground hover:text-foreground"
-          )}
-        >
-          All
-        </a>
-        {ENTITIES.map((ent) => (
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-sm font-medium text-muted-foreground mr-2 w-16">Entity</span>
           <a
-            key={ent.value}
-            href={`/legal/agreements?entity=${ent.value}${categoryFilter ? `&category=${categoryFilter}` : ""}${statusFilter ? `&status=${statusFilter}` : ""}`}
+            href="/legal/agreements"
             className={cn(
-              "rounded-md border px-3 py-1 text-xs transition-colors",
-              entityFilter === ent.value
-                ? "border-blue-500/50 bg-blue-500/10 text-blue-400"
-                : "border-border/50 text-muted-foreground hover:text-foreground"
+              "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+              !entityFilter
+                ? "border-primary bg-primary/15 text-primary"
+                : "border-border/50 text-muted-foreground hover:text-foreground hover:border-border"
             )}
           >
-            {ent.label}
+            All
           </a>
-        ))}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground mr-1">Category:</span>
-        <a
-          href={`/legal/agreements${entityFilter ? `?entity=${entityFilter}` : ""}${statusFilter ? `${entityFilter ? "&" : "?"}status=${statusFilter}` : ""}`}
-          className={cn(
-            "rounded-md border px-3 py-1 text-xs transition-colors",
-            !categoryFilter
-              ? "border-violet-500/50 bg-violet-500/10 text-violet-400"
-              : "border-border/50 text-muted-foreground hover:text-foreground"
-          )}
-        >
-          All
-        </a>
-        {allCategories.map((cat) => (
-          <a
-            key={cat}
-            href={`/legal/agreements?category=${cat}${entityFilter ? `&entity=${entityFilter}` : ""}${statusFilter ? `&status=${statusFilter}` : ""}`}
-            className={cn(
-              "rounded-md border px-3 py-1 text-xs transition-colors",
-              categoryFilter === cat
-                ? "border-violet-500/50 bg-violet-500/10 text-violet-400"
-                : "border-border/50 text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {categoryLabel(cat)}
-          </a>
-        ))}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground mr-1">Status:</span>
-        <a
-          href={`/legal/agreements${entityFilter ? `?entity=${entityFilter}` : ""}${categoryFilter ? `${entityFilter ? "&" : "?"}category=${categoryFilter}` : ""}`}
-          className={cn(
-            "rounded-md border px-3 py-1 text-xs transition-colors",
-            !statusFilter
-              ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400"
-              : "border-border/50 text-muted-foreground hover:text-foreground"
-          )}
-        >
-          All
-        </a>
-        {(Object.entries(LIFECYCLE_STATUS_LABELS) as [LifecycleStatus, string][]).map(
-          ([value, label]) => (
+          {ENTITIES.map((ent) => (
             <a
-              key={value}
-              href={`/legal/agreements?status=${value}${entityFilter ? `&entity=${entityFilter}` : ""}${categoryFilter ? `&category=${categoryFilter}` : ""}`}
+              key={ent.value}
+              href={`/legal/agreements?entity=${ent.value}${categoryFilter ? `&category=${categoryFilter}` : ""}${statusFilter ? `&status=${statusFilter}` : ""}`}
               className={cn(
-                "rounded-md border px-3 py-1 text-xs transition-colors",
-                statusFilter === value
-                  ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400"
-                  : "border-border/50 text-muted-foreground hover:text-foreground"
+                "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                entityFilter === ent.value
+                  ? "border-primary bg-primary/15 text-primary"
+                  : "border-border/50 text-muted-foreground hover:text-foreground hover:border-border"
               )}
             >
-              {label}
+              {ent.label}
             </a>
-          )
-        )}
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-sm font-medium text-muted-foreground mr-2 w-16">Status</span>
+          <a
+            href={`/legal/agreements${entityFilter ? `?entity=${entityFilter}` : ""}${categoryFilter ? `${entityFilter ? "&" : "?"}category=${categoryFilter}` : ""}`}
+            className={cn(
+              "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+              !statusFilter
+                ? "border-primary bg-primary/15 text-primary"
+                : "border-border/50 text-muted-foreground hover:text-foreground hover:border-border"
+            )}
+          >
+            All
+          </a>
+          {(Object.entries(LIFECYCLE_STATUS_LABELS) as [LifecycleStatus, string][]).map(
+            ([value, label]) => (
+              <a
+                key={value}
+                href={`/legal/agreements?status=${value}${entityFilter ? `&entity=${entityFilter}` : ""}${categoryFilter ? `&category=${categoryFilter}` : ""}`}
+                className={cn(
+                  "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                  statusFilter === value
+                    ? "border-primary bg-primary/15 text-primary"
+                    : "border-border/50 text-muted-foreground hover:text-foreground hover:border-border"
+                )}
+              >
+                {label}
+              </a>
+            )
+          )}
+        </div>
       </div>
 
-      {/* Agreements table */}
+      {/* Agreements table — no horizontal scroll */}
       <Card>
         <CardHeader>
           <CardTitle>
@@ -308,119 +275,94 @@ export default async function AgreementsPage({
               <p className="mt-1 text-sm text-muted-foreground">
                 {entityFilter || categoryFilter || statusFilter
                   ? "Try adjusting your filters."
-                  : "No legal documents have been recorded yet."}
+                  : "Create your first agreement to get started."}
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="min-w-[100px]">Entity</TableHead>
-                    <TableHead className="min-w-[120px]">Category</TableHead>
-                    <TableHead className="min-w-[200px]">Title</TableHead>
-                    <TableHead className="min-w-[140px]">Counterparty</TableHead>
-                    <TableHead className="min-w-[120px]">Status</TableHead>
-                    <TableHead className="min-w-[110px]">Effective Date</TableHead>
-                    <TableHead className="min-w-[110px]">Expiry Date</TableHead>
-                    <TableHead className="min-w-[160px] text-right">Financial Impact</TableHead>
-                    <TableHead className="min-w-[120px]">Assigned To</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {documents.map((doc) => {
-                    const recurring = doc.financial_impact_recurring
-                      ? Number(doc.financial_impact_recurring)
-                      : 0
-                    const onetime = doc.financial_impact_onetime
-                      ? Number(doc.financial_impact_onetime)
-                      : 0
-                    const hasFinancials = recurring > 0 || onetime > 0
-                    const expiryDays = doc.expiry_date ? daysUntil(doc.expiry_date) : null
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Title</TableHead>
+                  <TableHead>Entity</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Counterparty</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Expiry</TableHead>
+                  <TableHead className="text-right">Value</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {documents.map((doc) => {
+                  const recurring = doc.financial_impact_recurring
+                    ? Number(doc.financial_impact_recurring)
+                    : 0
+                  const onetime = doc.financial_impact_onetime
+                    ? Number(doc.financial_impact_onetime)
+                    : 0
+                  const hasFinancials = recurring > 0 || onetime > 0
+                  const expiryDays = doc.expiry_date ? daysUntil(doc.expiry_date) : null
 
-                    return (
-                      <TableRow key={doc.id}>
-                        <TableCell>
-                          <Badge variant="outline">{getEntityLabel(doc.entity)}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={CATEGORY_COLORS[doc.category] ?? CATEGORY_COLORS.OTHER}
+                  return (
+                    <TableRow key={doc.id}>
+                      <TableCell>
+                        <Link
+                          href={`/legal/documents/${doc.id}`}
+                          className="font-medium text-primary hover:underline underline-offset-4"
+                        >
+                          {doc.title}
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs whitespace-nowrap">
+                          {getEntityLabel(doc.entity)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={cn("text-xs whitespace-nowrap", CATEGORY_COLORS[doc.category] ?? CATEGORY_COLORS.OTHER)}
+                        >
+                          {categoryLabel(doc.category)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm truncate max-w-[140px]">
+                        {doc.counterparty ?? "\u2014"}
+                      </TableCell>
+                      <TableCell>
+                        <LifecycleBadge status={doc.lifecycle_status} />
+                      </TableCell>
+                      <TableCell>
+                        {doc.expiry_date ? (
+                          <span
+                            className={cn(
+                              "tabular-nums text-sm whitespace-nowrap",
+                              expiryDays !== null && expiryDays <= 30 && expiryDays >= 0
+                                ? "text-rose-400 font-medium"
+                                : expiryDays !== null && expiryDays < 0
+                                  ? "text-rose-500 font-semibold"
+                                  : "text-muted-foreground"
+                            )}
                           >
-                            {categoryLabel(doc.category)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Link
-                            href={`/legal/documents/${doc.id}`}
-                            className="font-medium text-primary hover:underline underline-offset-4"
-                          >
-                            {doc.title}
-                          </Link>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {doc.counterparty ?? "\u2014"}
-                        </TableCell>
-                        <TableCell>
-                          <LifecycleBadge status={doc.lifecycle_status} />
-                        </TableCell>
-                        <TableCell className="tabular-nums">
-                          {formatDate(doc.created_at)}
-                        </TableCell>
-                        <TableCell>
-                          {doc.expiry_date ? (
-                            <span
-                              className={cn(
-                                "tabular-nums",
-                                expiryDays !== null && expiryDays <= 30 && expiryDays >= 0
-                                  ? "text-rose-400 font-medium"
-                                  : expiryDays !== null && expiryDays < 0
-                                    ? "text-rose-500 font-semibold"
-                                    : ""
-                              )}
-                            >
-                              {formatDate(doc.expiry_date)}
-                              {expiryDays !== null && expiryDays <= 30 && expiryDays >= 0 && (
-                                <span className="ml-1 text-xs">({expiryDays}d)</span>
-                              )}
-                              {expiryDays !== null && expiryDays < 0 && (
-                                <span className="ml-1 text-xs">(expired)</span>
-                              )}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">\u2014</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {hasFinancials ? (
-                            <div className="font-mono tabular-nums text-sm">
-                              {recurring > 0 && (
-                                <div>
-                                  <span className="text-muted-foreground text-xs mr-1">R:</span>
-                                  {formatAED(recurring)}
-                                </div>
-                              )}
-                              {onetime > 0 && (
-                                <div>
-                                  <span className="text-muted-foreground text-xs mr-1">O:</span>
-                                  {formatAED(onetime)}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">\u2014</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {doc.assigned_to ?? "\u2014"}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                            {formatDate(doc.expiry_date)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">\u2014</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {hasFinancials ? (
+                          <span className="font-mono tabular-nums text-sm whitespace-nowrap">
+                            {formatAED(recurring + onetime)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">\u2014</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>

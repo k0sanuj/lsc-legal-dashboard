@@ -89,7 +89,7 @@ export default async function ESOPDetailPage({ params }: { params: Promise<{ id:
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{grant.employee_name}</h1>
           <p className="text-sm text-muted-foreground">
-            ESOP Grant &middot; {formatDate(grant.grant_date)}
+            Equity Grant &middot; {formatDate(grant.grant_date)}
           </p>
         </div>
       </div>

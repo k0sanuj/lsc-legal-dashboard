@@ -66,11 +66,10 @@ export const ENTITIES = [
   { value: "LSC", label: "League Sports Co" },
   { value: "TBR", label: "Team Blue Rising" },
   { value: "FSP", label: "Future of Sports" },
-  { value: "BOWLING", label: "Bowling" },
+  { value: "BOWLING", label: "Bowl & Darts" },
   { value: "SQUASH", label: "Squash" },
   { value: "BASKETBALL", label: "Basketball" },
-  { value: "BEER_PONG", label: "Beer Pong" },
-  { value: "PADEL", label: "Padel" },
+  { value: "BEER_PONG", label: "Ping Pong" },
   { value: "FOUNDATION", label: "Foundation Events" },
 ] as const
 

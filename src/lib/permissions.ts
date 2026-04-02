@@ -124,7 +124,7 @@ export const NAV_ITEMS: NavItem[] = [
 
   // Finance & Corporate
   { label: "Payment Cycles", href: "/legal/payment-cycles", icon: "CreditCard", group: "Finance" },
-  { label: "ESOP", href: "/legal/esop", icon: "TrendingUp", group: "Finance" },
+  { label: "Cap Table", href: "/legal/esop", icon: "TrendingUp", group: "Finance" },
 
   // Operations
   { label: "Policies", href: "/legal/policies", icon: "BookOpen", group: "Operations" },

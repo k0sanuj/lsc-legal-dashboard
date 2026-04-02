@@ -292,6 +292,43 @@ export default async function DataProtectionPage() {
                         </Badge>
                       )}
                     </div>
+
+                    {/* Compliance checklist */}
+                    <div className="mt-2 pt-3 border-t border-border/50 space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Compliance Checklist</p>
+                      {[
+                        { label: "DPO Assigned", ok: !!record.dpo_name },
+                        { label: "Privacy Policy Published", ok: !!record.privacy_policy_url },
+                        { label: "DPA Executed", ok: record.dpa_in_place },
+                        { label: "Breach Procedure Documented", ok: record.breach_procedure },
+                        { label: "Audit Completed (12mo)", ok: !auditStale },
+                        { label: "Registration Filed", ok: !!record.registration_status && record.registration_status !== "Not Required" && record.registration_status !== "Unknown" },
+                      ].map((check) => (
+                        <div key={check.label} className="flex items-center gap-2 text-xs">
+                          {check.ok ? (
+                            <ShieldCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                          ) : (
+                            <ShieldAlert className="h-3.5 w-3.5 text-rose-400 shrink-0" />
+                          )}
+                          <span className={check.ok ? "text-foreground" : "text-rose-400"}>{check.label}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Registration authority */}
+                    {record.registration_authority && (
+                      <div className="flex items-center justify-between text-sm mt-2">
+                        <span className="text-muted-foreground">Authority</span>
+                        <span className="text-xs font-medium">{record.registration_authority}</span>
+                      </div>
+                    )}
+
+                    {/* Notes */}
+                    {record.notes && (
+                      <div className="mt-2 pt-2 border-t border-border/50">
+                        <p className="text-xs text-muted-foreground">{record.notes}</p>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )

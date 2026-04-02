@@ -11,11 +11,10 @@ const ENTITY_LABELS: Record<string, string> = {
   LSC: 'League Sports Co',
   TBR: 'Team Blue Rising',
   FSP: 'Future of Sports',
-  BOWLING: 'Bowling',
+  BOWLING: 'Bowl & Darts',
   SQUASH: 'Squash',
   BASKETBALL: 'Basketball',
-  BEER_PONG: 'Beer Pong',
-  PADEL: 'Padel',
+  BEER_PONG: 'Ping Pong',
   FOUNDATION: 'Foundation Events',
 }
 

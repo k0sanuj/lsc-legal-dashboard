@@ -24,7 +24,7 @@ interface AnalysisResult {
 const SYSTEM_PROMPT = `You are an expert legal analyst for League Sports Co (LSC), a UAE-based sports and entertainment holding company. LSC operates under UAE commercial law and has subsidiaries including:
 - TBR (Team Blue Rising) — E1 racing team
 - FSP (Future of Sports) — technology platform
-- Tournament properties: Bowling, Squash, Basketball, Beer Pong, Padel
+- Tournament properties: Bowl & Darts, Squash, Basketball, Ping Pong
 - Foundation Events — charitable arm
 
 Your task is to analyze legal documents and extract structured information. Consider UAE-specific legal requirements, DIFC/ADGM regulations where applicable, and standard international commercial law.
@@ -42,7 +42,7 @@ Respond ONLY with valid JSON matching this exact structure (no markdown, no expl
   },
   "unusualClauses": [{ "clause": "string", "concern": "string", "riskLevel": "low|medium|high" }],
   "counterparty": "string or null",
-  "entity": "one of: LSC, TBR, FSP, BOWLING, SQUASH, BASKETBALL, BEER_PONG, PADEL, FOUNDATION or null"
+  "entity": "one of: LSC, TBR, FSP, BOWLING, SQUASH, BASKETBALL, BEER_PONG, FOUNDATION or null"
 }`
 
 export class AgreementAnalyzerAgent extends BaseAgent {
@@ -152,7 +152,6 @@ function isValidEntity(value: string): boolean {
     'SQUASH',
     'BASKETBALL',
     'BEER_PONG',
-    'PADEL',
     'FOUNDATION',
   ]
   return validEntities.includes(value)
