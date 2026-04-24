@@ -4,7 +4,19 @@ import { prisma } from "@/lib/prisma"
 import { requireRole } from "@/lib/auth"
 import { VALID_TRANSITIONS } from "@/lib/constants"
 import { revalidatePath } from "next/cache"
+import { after } from "next/server"
+import { runAgent } from "@/lib/agents/orchestrator"
+import type { AgentId } from "@/lib/agents/types"
 import type { LifecycleStatus } from "@/generated/prisma/client"
+
+// Maps a lifecycle transition to the agent that fires once the DB update
+// succeeds. Only the three high-value transitions trigger an AI agent —
+// other transitions pay no token cost.
+const TRANSITION_AGENT: Partial<Record<string, AgentId>> = {
+  "DRAFT->IN_REVIEW": "agreement-analyzer",
+  "NEGOTIATION->AWAITING_SIGNATURE": "pre-signature-checklist",
+  "SIGNED->ACTIVE": "activation",
+}
 
 export async function createDocument(formData: FormData) {
   const session = await requireRole([
@@ -121,6 +133,28 @@ export async function transitionDocument(
     revalidatePath("/legal")
     revalidatePath("/legal/documents")
     revalidatePath(`/legal/documents/${documentId}`)
+
+    // Fire the transition-specific agent in the background so the user's
+    // request returns immediately. The agent's run()/log() writes will land
+    // before the serverless function terminates.
+    const agentId = TRANSITION_AGENT[`${currentStatus}->${toStatus}`]
+    if (agentId) {
+      const docContent = await prisma.legalDocument.findUnique({
+        where: { id: documentId },
+        select: { notes: true },
+      })
+      const input =
+        agentId === "agreement-analyzer"
+          ? { documentId, content: docContent?.notes ?? "" }
+          : { documentId }
+      after(async () => {
+        try {
+          await runAgent(agentId, input)
+        } catch (err) {
+          console.error(`Lifecycle agent ${agentId} failed for ${documentId}:`, err)
+        }
+      })
+    }
 
     return { success: true }
   } catch (error) {

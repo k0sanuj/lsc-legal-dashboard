@@ -4,6 +4,8 @@ import { ComplianceAgent } from './compliance-agent'
 import { AgreementAnalyzerAgent } from './agreement-analyzer-agent'
 import { InvoiceDetectionAgent } from './invoice-detection-agent'
 import { ComplianceAuditAgent } from './compliance-audit-agent'
+import { PreSignatureChecklistAgent } from './pre-signature-checklist-agent'
+import { ActivationAgent } from './activation-agent'
 import { BaseAgent } from './base-agent'
 
 /** Registry of all agents */
@@ -25,6 +27,12 @@ function getOrCreateAgent(id: AgentId): BaseAgent | null {
       break
     case 'compliance-audit':
       agent = new ComplianceAuditAgent()
+      break
+    case 'pre-signature-checklist':
+      agent = new PreSignatureChecklistAgent()
+      break
+    case 'activation':
+      agent = new ActivationAgent()
       break
     default:
       return null

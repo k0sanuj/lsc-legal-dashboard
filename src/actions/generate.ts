@@ -3,9 +3,39 @@
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
+import Anthropic from '@anthropic-ai/sdk'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' })
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '')
+const PROVIDER = (process.env.AI_PROVIDER ?? 'anthropic').toLowerCase()
+const SONNET = 'claude-sonnet-4-6'
+
+type Turn = { role: 'user' | 'assistant'; content: string }
+
+async function callGenerationAI(system: string, turns: Turn[], maxTokens = 4096): Promise<string> {
+  if (PROVIDER === 'gemini') {
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro', systemInstruction: system })
+    if (turns.length === 1) {
+      return (await model.generateContent(turns[0]!.content)).response.text()
+    }
+    const history = turns.slice(0, -1).map((t) => ({
+      role: t.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: t.content }],
+    }))
+    const chat = model.startChat({ history })
+    return (await chat.sendMessage(turns[turns.length - 1]!.content)).response.text()
+  }
+  const res = await anthropic.messages.create({
+    model: SONNET,
+    max_tokens: maxTokens,
+    temperature: 0.2,
+    system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+    messages: turns.map((t) => ({ role: t.role, content: t.content })),
+  })
+  const block = res.content[0]
+  return block && block.type === 'text' ? block.text : ''
+}
 
 const ENTITY_LABELS: Record<string, string> = {
   LSC: 'League Sports Co',
@@ -74,14 +104,7 @@ ${templateContent
 10. Signature blocks`}`
 
   try {
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-pro',
-      systemInstruction: SYSTEM_PROMPT,
-    })
-
-    const result = await model.generateContent(userPrompt)
-    const draft = result.response.text()
-
+    const draft = await callGenerationAI(SYSTEM_PROMPT, [{ role: 'user', content: userPrompt }])
     return { success: true, draft }
   } catch (error) {
     console.error('AI generation error:', error)
@@ -101,29 +124,14 @@ export async function refineContract(
   await requireRole(['PLATFORM_ADMIN', 'FINANCE_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
 
   try {
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-pro',
-      systemInstruction: SYSTEM_PROMPT,
-    })
-
-    const chat = model.startChat({
-      history: [
-        {
-          role: 'user',
-          parts: [{ text: `Here is the current contract draft:\n\n${currentDraft}` }],
-        },
-        {
-          role: 'model',
-          parts: [{ text: 'I have the contract draft. What changes would you like me to make?' }],
-        },
-      ],
-    })
-
-    const result = await chat.sendMessage(
-      `Apply the following change to the contract and output the FULL updated contract text. Do not add any preamble or explanation — output only the contract.\n\nInstruction: ${instruction}`
-    )
-    const refined = result.response.text()
-
+    const refined = await callGenerationAI(SYSTEM_PROMPT, [
+      { role: 'user', content: `Here is the current contract draft:\n\n${currentDraft}` },
+      { role: 'assistant', content: 'I have the contract draft. What changes would you like me to make?' },
+      {
+        role: 'user',
+        content: `Apply the following change to the contract and output the FULL updated contract text. Do not add any preamble or explanation — output only the contract.\n\nInstruction: ${instruction}`,
+      },
+    ])
     return { success: true, draft: refined }
   } catch (error) {
     console.error('AI refinement error:', error)

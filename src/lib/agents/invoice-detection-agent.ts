@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { BaseAgent } from './base-agent'
+import { LSC_LEGAL_CONTEXT } from './shared-context'
 import type { AgentResult } from './types'
 import { sendCrossDashboardMessage } from './orchestrator'
 
@@ -22,29 +23,22 @@ interface DetectedInvoiceData {
   lineItems?: { description: string; amount: number }[]
 }
 
-const SYSTEM_PROMPT = `You are an invoice detection specialist for League Sports Co (LSC), a UAE-based sports and entertainment holding company. LSC's primary currency is AED.
+const TASK_INSTRUCTIONS = `Task: Determine if the email below contains or references an invoice (direct attachment, payment request, billing statement, pro-forma invoice, or overdue notice).
 
-Entities: LSC, TBR (Team Blue Rising — E1 racing), FSP (Future of Sports — tech), BOWLING, SQUASH, BASKETBALL, BEER_PONG, FOUNDATION.
-
-Analyze the email below and determine if it contains or references an invoice. Consider:
-- Direct invoice attachments
-- Payment requests
-- Billing statements
-- Pro-forma invoices
-- Overdue payment notices
-
-Respond ONLY with valid JSON (no markdown, no explanation):
+Output JSON schema:
 {
-  "isInvoice": true/false,
+  "isInvoice": true|false,
   "confidence": 0.0-1.0,
   "vendor": "vendor name or null",
   "amount": numeric_amount_or_null,
-  "currency": "AED/USD/EUR/GBP or null",
+  "currency": "AED|USD|EUR|GBP or null",
   "invoiceDate": "YYYY-MM-DD or null",
-  "entity": "LSC|TBR|FSP|BOWLING|SQUASH|BASKETBALL|BEER_PONG|FOUNDATION or null",
+  "entity": "<one of the Entity enum values> or null",
   "category": "category description or null",
   "lineItems": [{ "description": "string", "amount": number }]
 }`
+
+const SYSTEM_PROMPT = `${LSC_LEGAL_CONTEXT}\n\n${TASK_INSTRUCTIONS}`
 
 export class InvoiceDetectionAgent extends BaseAgent {
   id = 'email-inbox.invoice-detection' as const
@@ -79,7 +73,13 @@ export class InvoiceDetectionAgent extends BaseAgent {
 
     let rawResponse: string
     try {
-      rawResponse = await this.callAI(SYSTEM_PROMPT, userMessage)
+      rawResponse = await this.callAI({
+        system: SYSTEM_PROMPT,
+        user: userMessage,
+        model: 'haiku',
+        maxTokens: 768,
+        expectJson: true,
+      })
     } catch (error) {
       await this.log('ai_call_failed', { from, subject, error: String(error) })
       return { success: false, error: `AI analysis failed: ${String(error)}` }

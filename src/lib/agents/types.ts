@@ -26,6 +26,8 @@ export type AgentId =
   | 'data-compliance-officer.gdpr'
   | 'data-compliance-officer.jurisdiction-policy'
   | 'data-compliance-officer.officer-assignment'
+  | 'pre-signature-checklist'
+  | 'activation'
 
 export type AgentMessagePriority = 'critical' | 'high' | 'normal' | 'low'
 

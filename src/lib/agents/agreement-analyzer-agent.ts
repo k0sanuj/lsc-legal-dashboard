@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { BaseAgent } from './base-agent'
+import { LSC_LEGAL_CONTEXT } from './shared-context'
 import type { AgentResult } from './types'
 
 interface AnalyzerInput {
@@ -21,17 +22,11 @@ interface AnalysisResult {
   suggestedFileName: string
 }
 
-const SYSTEM_PROMPT = `You are an expert legal analyst for League Sports Co (LSC), a UAE-based sports and entertainment holding company. LSC operates under UAE commercial law and has subsidiaries including:
-- TBR (Team Blue Rising) — E1 racing team
-- FSP (Future of Sports) — technology platform
-- Tournament properties: Bowl & Darts, Squash, Basketball, Ping Pong
-- Foundation Events — charitable arm
+const TASK_INSTRUCTIONS = `Task: Analyze the legal document below and extract structured information.
 
-Your task is to analyze legal documents and extract structured information. Consider UAE-specific legal requirements, DIFC/ADGM regulations where applicable, and standard international commercial law.
-
-Respond ONLY with valid JSON matching this exact structure (no markdown, no explanation):
+Output JSON schema:
 {
-  "suggestedCategory": "one of: SPONSORSHIP, VENDOR, EMPLOYMENT, ESOP, NDA, ARENA_HOST, TERMS_OF_SERVICE, WAIVER, IP_ASSIGNMENT, PILOT_PROGRAM, BOARD_RESOLUTION, POLICY, MSA, SLA, CONTRACTOR, REFERRAL_PARTNER, VENUE, PRODUCTION_PARTNER, CLICKWRAP, REGISTERED_OFFICE, SAAS_SUBSCRIPTION, INSURANCE, GOVERNMENT_FILING, LITIGATION_DOC, SUBSIDY_GRANT, OTHER",
+  "suggestedCategory": "<one of the Category enum values>",
   "keyDates": [{ "label": "string", "date": "YYYY-MM-DD" }],
   "obligations": [{ "party": "string", "obligation": "string", "deadline": "YYYY-MM-DD or null" }],
   "financialTerms": {
@@ -42,8 +37,10 @@ Respond ONLY with valid JSON matching this exact structure (no markdown, no expl
   },
   "unusualClauses": [{ "clause": "string", "concern": "string", "riskLevel": "low|medium|high" }],
   "counterparty": "string or null",
-  "entity": "one of: LSC, TBR, FSP, BOWLING, SQUASH, BASKETBALL, BEER_PONG, FOUNDATION or null"
+  "entity": "<one of the Entity enum values> or null"
 }`
+
+const SYSTEM_PROMPT = `${LSC_LEGAL_CONTEXT}\n\n${TASK_INSTRUCTIONS}`
 
 export class AgreementAnalyzerAgent extends BaseAgent {
   id = 'agreement-analyzer' as const
@@ -67,10 +64,13 @@ export class AgreementAnalyzerAgent extends BaseAgent {
 
     let rawResponse: string
     try {
-      rawResponse = await this.callAI(
-        SYSTEM_PROMPT,
-        `Analyze the following legal document:\n\n${content}`
-      )
+      rawResponse = await this.callAI({
+        system: SYSTEM_PROMPT,
+        user: `Document to analyze:\n\n${content}`,
+        model: 'haiku',
+        maxTokens: 1024,
+        expectJson: true,
+      })
     } catch (error) {
       await this.log('ai_call_failed', { documentId, error: String(error) })
       return { success: false, error: `AI analysis failed: ${String(error)}` }
