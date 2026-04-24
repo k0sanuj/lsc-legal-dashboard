@@ -152,9 +152,9 @@ export function NewAgreementForm() {
           {/* File Upload */}
           <div className="space-y-2">
             <label className="text-sm font-medium">Upload Document</label>
-            <Input name="file" type="file" accept=".pdf,.doc,.docx" />
+            <Input name="file" type="file" accept=".pdf,.docx,.txt,.md" />
             <p className="text-xs text-muted-foreground">
-              PDF, DOC, or DOCX — max 10MB
+              PDF, DOCX, TXT, or MD — max 25MB. AI will analyze the contents and extract clauses, dates, and risks automatically.
             </p>
           </div>
 
@@ -177,7 +177,7 @@ export function NewAgreementForm() {
               {isPending ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  Creating...
+                  Uploading & analyzing...
                 </>
               ) : (
                 "Create Agreement"

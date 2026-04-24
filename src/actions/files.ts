@@ -3,7 +3,9 @@
 import { requireSession } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { uploadToS3, deleteFromS3, getS3Key } from "@/lib/s3"
+import { extractTextFromFile } from "@/lib/extract-text"
 import { runAgent } from "@/lib/agents/orchestrator"
+import { after } from "next/server"
 import { revalidatePath } from "next/cache"
 
 export async function uploadDocumentFile(formData: FormData) {
@@ -27,15 +29,25 @@ export async function uploadDocumentFile(formData: FormData) {
       data: { file_url: url },
     })
 
-    // Auto-analyze uploaded document
-    try {
-      const doc = await prisma.legalDocument.findUnique({ where: { id: documentId }, select: { title: true, notes: true, entity: true } })
-      if (doc) {
-        await runAgent('agreement-analyzer', { documentId, content: doc.notes ?? doc.title })
+    // Extract the file's actual text so the analyzer has real content to
+    // work with, not just title/notes metadata.
+    const extractedText = await extractTextFromFile(file)
+    const doc = await prisma.legalDocument.findUnique({
+      where: { id: documentId },
+      select: { title: true, notes: true },
+    })
+    const content = extractedText.trim() || doc?.notes || doc?.title || ""
+
+    // Fire the analyzer in the background so the upload request returns
+    // immediately. The request stays alive long enough via after() for
+    // the agent to complete.
+    after(async () => {
+      try {
+        await runAgent("agreement-analyzer", { documentId, content })
+      } catch (e) {
+        console.error("Agent analysis failed (non-blocking):", e)
       }
-    } catch (e) {
-      console.error('Agent analysis failed (non-blocking):', e)
-    }
+    })
 
     revalidatePath(`/legal/documents/${documentId}`)
     revalidatePath("/legal/documents")
