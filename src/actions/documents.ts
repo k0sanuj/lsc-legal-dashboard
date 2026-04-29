@@ -32,6 +32,7 @@ export async function createDocument(formData: FormData) {
   const title = formData.get("title") as string
   const category = formData.get("category") as string
   const entity = formData.get("entity") as string
+  const sport = (formData.get("sport") as string) || null
   const counterparty = formData.get("counterparty") as string | null
   const valueStr = formData.get("value") as string | null
   const expiryStr = formData.get("expiry_date") as string | null
@@ -69,6 +70,7 @@ export async function createDocument(formData: FormData) {
         title,
         category: category as never,
         entity: entity as never,
+        sport: sport || null,
         owner_id: session.userId,
         counterparty: counterparty || null,
         value: valueStr ? parseFloat(valueStr) : null,

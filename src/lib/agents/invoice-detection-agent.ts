@@ -33,7 +33,8 @@ Output JSON schema:
   "amount": numeric_amount_or_null,
   "currency": "AED|USD|EUR|GBP or null",
   "invoiceDate": "YYYY-MM-DD or null",
-  "entity": "<one of the Entity enum values> or null",
+  "entity": "LSC|TBR|FSP|XTZ|XTE or null",
+  "sport": "BOWLING|SQUASH|BASKETBALL|WORLD_PONG|FOUNDATION (when entity=FSP and tournament-related) or null",
   "category": "category description or null",
   "lineItems": [{ "description": "string", "amount": number }]
 }`
@@ -213,15 +214,6 @@ export class InvoiceDetectionAgent extends BaseAgent {
 
 function isValidEntity(value: string | null): boolean {
   if (!value) return false
-  const validEntities = [
-    'LSC',
-    'TBR',
-    'FSP',
-    'BOWLING',
-    'SQUASH',
-    'BASKETBALL',
-    'BEER_PONG',
-    'FOUNDATION',
-  ]
+  const validEntities = ['LSC', 'TBR', 'FSP', 'XTZ', 'XTE']
   return validEntities.includes(value)
 }

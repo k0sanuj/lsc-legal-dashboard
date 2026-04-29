@@ -13,11 +13,8 @@ enum Entity {
   LSC
   TBR
   FSP
-  BOWLING
-  SQUASH
-  BASKETBALL
-  BEER_PONG
-  FOUNDATION
+  XTZ
+  XTE
 }
 
 enum LifecycleStatus {
@@ -282,6 +279,7 @@ model LegalDocument {
   value            Decimal?
   currency         String           @default("AED")
   entity           Entity
+  sport            String?
   owner_id         String
   expiry_date      DateTime?
   parent_doc_id    String?
@@ -372,6 +370,7 @@ model ContractTemplate {
   name        String
   category    DocumentCategory
   entity      Entity?
+  sport       String?
   content     String
   variables   Json
   version     Int              @default(1)
@@ -404,6 +403,7 @@ model ComplianceDeadline {
 model ComplianceRecord {
   id                    String             @id @default(uuid())
   entity                Entity
+  sport                 String?
   jurisdiction          Jurisdiction
   check_type            String
   status                RegistrationStatus @default(PENDING)
@@ -426,6 +426,7 @@ model ComplianceRecord {
 model ComplianceOfficer {
   id          String   @id @default(uuid())
   entity      Entity
+  sport       String?
   user_id     String
   is_primary  Boolean  @default(false)
   created_at  DateTime @default(now())
@@ -439,6 +440,7 @@ model ComplianceOfficer {
 model RegisteredOfficeAgreement {
   id              String   @id @default(uuid())
   entity          Entity
+  sport           String?
   jurisdiction    Jurisdiction
   address         String
   landlord        String?
@@ -457,6 +459,7 @@ model RegisteredOfficeAgreement {
 model CompanyEmail {
   id              String   @id @default(uuid())
   entity          Entity
+  sport           String?
   email_address   String   @unique
   owner_name      String?
   last_activity   DateTime?
@@ -473,6 +476,7 @@ model CompanyEmail {
 model DataProtectionRecord {
   id                     String       @id @default(uuid())
   entity                 Entity
+  sport                  String?
   jurisdiction           Jurisdiction
   applicable_law         String
   dpo_required           Boolean      @default(false)
@@ -500,6 +504,7 @@ model ESOPGrant {
   employee_name      String
   employee_email     String?
   entity             Entity      @default(LSC)
+  sport              String?
   grant_date         DateTime
   total_shares       Int
   vested_shares      Int         @default(0)
@@ -511,10 +516,25 @@ model ESOPGrant {
   acceleration_events Json?
   jp_split_ratio     Decimal?
   legal_document_id  String?
+
+  // Finance integration
+  holder_type         String? // "founder" | "employee" | "investor" | "advisor"
+  share_class         String? // "common" | "preferred_a" | "preferred_b" | "options"
+  vesting_start_date  DateTime? @db.Date
+  vesting_end_date    DateTime? @db.Date
+  agreement_reference String?
+
+  // Sync tracking
+  last_finance_post_at    DateTime?
+  finance_post_status     String?
+  last_finance_post_error String?
+
   created_at         DateTime    @default(now())
   updated_at         DateTime    @updatedAt
 
   vesting_events VestingEvent[]
+
+  @@index([finance_post_status])
 }
 
 model VestingEvent {
@@ -618,6 +638,23 @@ model PaymentCycle {
   status          PaymentCycleStatus @default(UPCOMING)
   finance_sync_id String?
   last_sync_at    DateTime?
+
+  // Finance integration: tranche metadata
+  tranche_number       Int?
+  tranche_label        String?
+  tranche_percentage   Decimal? @db.Decimal(5, 2)
+  tranche_amount_usd   Decimal? @db.Decimal(14, 2)
+  trigger_type         String? // "on_signing" | "pre_event" | "post_event" | "on_milestone" | "on_date"
+  trigger_date         DateTime? @db.Date
+  trigger_offset_days  Int?     @default(0)
+  contract_name        String? // denormalized so Finance can resolve via (companyCode, contractName)
+  notes                String?
+
+  // Sync tracking
+  last_finance_post_at    DateTime?
+  finance_post_status     String? // "synced" | "pending" | "failed"
+  last_finance_post_error String?
+
   created_at      DateTime           @default(now())
   updated_at      DateTime           @updatedAt
 
@@ -625,6 +662,7 @@ model PaymentCycle {
 
   @@index([document_id])
   @@index([status])
+  @@index([finance_post_status])
 }
 
 // ─── KYC & Administrator Accounts ────────────────────────────────────────────
@@ -632,6 +670,7 @@ model PaymentCycle {
 model KycDocument {
   id            String       @id @default(uuid())
   entity        Entity
+  sport         String?
   jurisdiction  Jurisdiction
   document_type String
   document_name String
@@ -654,6 +693,7 @@ model KycDocument {
 model AdminAccount {
   id                   String   @id @default(uuid())
   entity               Entity
+  sport                String?
   platform_name        String
   platform_url         String?
   account_holder       String
@@ -677,6 +717,7 @@ model LitigationCase {
   jurisdiction          Jurisdiction
   court_tribunal        String?
   entity                Entity
+  sport                 String?
   plaintiff             String
   defendant             String
   third_parties         Json?
@@ -741,6 +782,7 @@ model DetectedInvoice {
   currency            String   @default("AED")
   invoice_date        DateTime?
   entity              Entity?
+  sport               String?
   category            String?
   verification_status String   @default("pending")
   math_check_passed   Boolean  @default(false)
@@ -781,6 +823,7 @@ model ClickwrapAcceptance {
   ip_address        String?
   user_agent        String?
   entity            Entity?
+  sport             String?
 
   @@index([person_email])
   @@index([agreement_title, agreement_version])
@@ -792,6 +835,7 @@ model Subsidy {
   id                    String        @id @default(uuid())
   title                 String
   entity                Entity
+  sport                 String?
   jurisdiction          Jurisdiction
   source                String
   status                SubsidyStatus @default(IDENTIFIED)
@@ -816,6 +860,7 @@ model AuditReport {
   id          String   @id @default(uuid())
   audit_type  String
   entity      Entity?
+  sport       String?
   jurisdiction Jurisdiction?
   findings    Json
   summary     String?
@@ -897,6 +942,7 @@ model FileNamingLog {
   original_name String
   renamed_to    String
   entity        Entity?
+  sport         String?
   category      String?
   approved      Boolean  @default(false)
   approved_by   String?
@@ -942,6 +988,7 @@ model CalendarEvent {
   start_date         DateTime
   end_date           DateTime?
   entity             Entity?
+  sport              String?
   linked_entity_type String?
   linked_entity_id   String?
   created_at         DateTime @default(now())

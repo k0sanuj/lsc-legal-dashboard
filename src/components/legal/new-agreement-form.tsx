@@ -20,10 +20,15 @@ const ENTITIES = [
   { value: "LSC", label: "League Sports Co" },
   { value: "TBR", label: "Team Blue Rising" },
   { value: "FSP", label: "Future of Sports" },
+  { value: "XTZ", label: "XTZ Esports Tech" },
+  { value: "XTE", label: "XTE" },
+]
+
+const SPORTS_FOR_FSP = [
   { value: "BOWLING", label: "Bowl & Darts" },
   { value: "SQUASH", label: "Squash" },
   { value: "BASKETBALL", label: "Basketball" },
-  { value: "BEER_PONG", label: "Ping Pong" },
+  { value: "WORLD_PONG", label: "Ping Pong" },
   { value: "FOUNDATION", label: "Foundation Events" },
 ]
 
@@ -89,6 +94,27 @@ export function NewAgreementForm() {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Sport (only relevant for FSP tournament properties) */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Sport / Property</label>
+            <select
+              name="sport"
+              aria-label="Sport"
+              defaultValue=""
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="">— None —</option>
+              {SPORTS_FOR_FSP.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Optional. Use for FSP tournament properties (Bowl & Darts, Squash, etc.).
+            </p>
           </div>
 
           {/* Category */}

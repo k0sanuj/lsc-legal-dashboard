@@ -19,6 +19,16 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Skip cron + webhook endpoints — they authenticate via bearer token /
+  // shared secret, not user sessions. Without this, Vercel cron invocations
+  // get redirected to /login and the handler never runs.
+  if (
+    pathname.startsWith("/api/cron/") ||
+    pathname.startsWith("/api/webhooks/")
+  ) {
+    return NextResponse.next()
+  }
+
   const token = request.cookies.get("lsc_legal_session")?.value
   if (!token) {
     return NextResponse.redirect(new URL("/login", request.url))

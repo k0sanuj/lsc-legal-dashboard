@@ -126,6 +126,9 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Payment Cycles", href: "/legal/payment-cycles", icon: "CreditCard", group: "Finance" },
   { label: "Cap Table", href: "/legal/esop", icon: "TrendingUp", group: "Finance" },
 
+  // Integrations
+  { label: "Finance Sync", href: "/legal/finance-sync", icon: "Webhook", group: "Integrations" },
+
   // Operations
   { label: "Policies", href: "/legal/policies", icon: "BookOpen", group: "Operations" },
   { label: "Issues", href: "/legal/issues", icon: "AlertCircle", group: "Operations" },

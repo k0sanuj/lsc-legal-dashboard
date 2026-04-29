@@ -22,6 +22,9 @@ import {
 } from "@/components/ui/table"
 import { Users, TrendingUp, Wallet, PieChart } from "lucide-react"
 import type { VestingType } from "@/generated/prisma/client"
+import { NewGrantForm } from "@/components/legal/new-grant-form"
+import { FinanceSyncBadge } from "@/components/legal/finance-sync-badge"
+import { resyncEsopGrantAction } from "@/actions/esop"
 
 const VESTING_LABELS: Record<VestingType, string> = {
   STANDARD_4Y_1Y_CLIFF: "4Y / 1Y Cliff",
@@ -103,11 +106,14 @@ export default async function ESOPPage({ searchParams }: { searchParams: Promise
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Cap Table</h1>
-        <p className="text-muted-foreground">
-          Equity pool, grant tracking, and vesting schedules across entities
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Cap Table</h1>
+          <p className="text-muted-foreground">
+            Equity pool, grant tracking, and vesting schedules across entities
+          </p>
+        </div>
+        <NewGrantForm />
       </div>
 
       {/* Summary cards */}
@@ -182,6 +188,7 @@ export default async function ESOPPage({ searchParams }: { searchParams: Promise
                   <TableHead className="text-right">Vested %</TableHead>
                   <TableHead className="text-right">Exercise Price</TableHead>
                   <TableHead>Vesting Type</TableHead>
+                  <TableHead className="text-center">Finance Sync</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -243,6 +250,15 @@ export default async function ESOPPage({ searchParams }: { searchParams: Promise
                         >
                           {VESTING_LABELS[grant.vesting_type]}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <FinanceSyncBadge
+                          status={grant.finance_post_status}
+                          lastPostedAt={grant.last_finance_post_at}
+                          errorMessage={grant.last_finance_post_error}
+                          recordId={grant.id}
+                          resyncAction={resyncEsopGrantAction}
+                        />
                       </TableCell>
                       <TableCell>
                         <a

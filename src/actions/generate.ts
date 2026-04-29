@@ -41,11 +41,8 @@ const ENTITY_LABELS: Record<string, string> = {
   LSC: 'League Sports Co',
   TBR: 'Team Blue Rising',
   FSP: 'Future of Sports',
-  BOWLING: 'Bowl & Darts',
-  SQUASH: 'Squash',
-  BASKETBALL: 'Basketball',
-  BEER_PONG: 'Ping Pong',
-  FOUNDATION: 'Foundation Events',
+  XTZ: 'XTZ Esports Tech',
+  XTE: 'XTE',
 }
 
 const SYSTEM_PROMPT = `You are a legal contract drafting assistant for League Sports Co (LSC), a UAE-based sports holding company. Generate professional, legally-structured contract drafts based on templates and variables provided. Use formal legal language appropriate for UAE jurisdiction. All monetary values are in AED unless stated otherwise. Output ONLY the contract text, no preamble or explanation.`

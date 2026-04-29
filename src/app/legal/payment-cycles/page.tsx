@@ -25,6 +25,9 @@ import {
   RefreshCw,
 } from "lucide-react"
 import type { PaymentCycleStatus, PaymentTerms } from "@/generated/prisma/client"
+import { NewTrancheForm } from "@/components/legal/new-tranche-form"
+import { FinanceSyncBadge } from "@/components/legal/finance-sync-badge"
+import { resyncPaymentCycleAction } from "@/actions/payment-cycles"
 
 const STATUS_COLORS: Record<PaymentCycleStatus, string> = {
   UPCOMING: "bg-blue-500/10 text-blue-400 border-blue-500/20",
@@ -54,20 +57,34 @@ const TERMS_COLORS: Record<PaymentTerms, string> = {
   CUSTOM: "bg-slate-400/10 text-slate-400 border-slate-400/20",
 }
 
-export default async function PaymentCyclesPage() {
+export default async function PaymentCyclesPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
   await requireSession()
+  const params = await searchParams
+  const status = typeof params.status === "string" ? params.status : null
+  const message = typeof params.message === "string" ? params.message : null
 
-  const cycles = await prisma.paymentCycle.findMany({
-    orderBy: [{ status: "asc" }, { cycle_start: "asc" }],
-    include: {
-      document: { select: { id: true, title: true } },
-    },
-  })
+  const [cycles, documents] = await Promise.all([
+    prisma.paymentCycle.findMany({
+      orderBy: [{ status: "asc" }, { cycle_start: "asc" }],
+      include: {
+        document: { select: { id: true, title: true } },
+      },
+    }),
+    prisma.legalDocument.findMany({
+      orderBy: { updated_at: "desc" },
+      select: { id: true, title: true },
+      take: 100,
+    }),
+  ])
 
   const totalCycles = cycles.length
   const activeCycles = cycles.filter((c) => c.status === "ACTIVE").length
   const overdueCycles = cycles.filter((c) => c.status === "OVERDUE").length
-  const syncedCycles = cycles.filter((c) => c.finance_sync_id !== null).length
+  const syncedCycles = cycles.filter((c) => c.finance_post_status === "synced").length
 
   const summaryCards = [
     {
@@ -102,12 +119,30 @@ export default async function PaymentCyclesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Payment Cycles</h1>
-        <p className="text-muted-foreground">
-          Payment terms management and finance synchronization
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Payment Cycles</h1>
+          <p className="text-muted-foreground">
+            Payment terms management and Finance synchronization
+          </p>
+        </div>
+        <NewTrancheForm documents={documents} />
       </div>
+
+      {message && (
+        <div
+          className={cn(
+            "rounded-lg border px-4 py-3 text-sm",
+            status === "success"
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+              : status === "warn"
+                ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                : "border-rose-500/30 bg-rose-500/10 text-rose-400"
+          )}
+        >
+          {message.replace(/\+/g, " ")}
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -151,10 +186,11 @@ export default async function PaymentCyclesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Document</TableHead>
-                  <TableHead>Terms</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead>Period</TableHead>
+                  <TableHead>Contract</TableHead>
+                  <TableHead>Tranche</TableHead>
+                  <TableHead>Trigger</TableHead>
+                  <TableHead className="text-right">Amount (USD)</TableHead>
+                  <TableHead>%</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-center">Finance Sync</TableHead>
                 </TableRow>
@@ -163,38 +199,64 @@ export default async function PaymentCyclesPage() {
                 {cycles.map((cycle) => (
                   <TableRow key={cycle.id}>
                     <TableCell>
+                      <div className="font-medium">
+                        {cycle.contract_name ?? cycle.document.title}
+                      </div>
                       <a
                         href={`/legal/documents/${cycle.document.id}`}
-                        className="font-medium text-blue-400 underline-offset-4 hover:underline"
+                        className="text-xs text-blue-400 underline-offset-4 hover:underline"
                       >
                         {cycle.document.title}
                       </a>
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={TERMS_COLORS[cycle.terms]}
-                      >
-                        {TERMS_LABELS[cycle.terms]}
-                        {cycle.custom_terms
-                          ? ` (${cycle.custom_terms})`
-                          : ""}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">
-                      {formatAED(Number(cycle.amount))}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {cycle.cycle_start && cycle.cycle_end ? (
-                        <>
-                          {formatDate(cycle.cycle_start)} &ndash;{" "}
-                          {formatDate(cycle.cycle_end)}
-                        </>
-                      ) : cycle.cycle_start ? (
-                        <>From {formatDate(cycle.cycle_start)}</>
+                      {cycle.tranche_number != null ? (
+                        <div>
+                          <div className="text-sm">#{cycle.tranche_number}</div>
+                          {cycle.tranche_label && (
+                            <div className="text-xs text-muted-foreground">
+                              {cycle.tranche_label}
+                            </div>
+                          )}
+                        </div>
                       ) : (
-                        "\u2014"
+                        <Badge
+                          variant="outline"
+                          className={TERMS_COLORS[cycle.terms]}
+                        >
+                          {TERMS_LABELS[cycle.terms]}
+                        </Badge>
                       )}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {cycle.trigger_type ? (
+                        <div>
+                          <div className="capitalize">
+                            {cycle.trigger_type.replace(/_/g, " ")}
+                          </div>
+                          {cycle.trigger_date && (
+                            <div className="text-xs text-muted-foreground">
+                              {formatDate(cycle.trigger_date)}
+                            </div>
+                          )}
+                        </div>
+                      ) : cycle.cycle_start ? (
+                        <span className="text-xs text-muted-foreground">
+                          {formatDate(cycle.cycle_start)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">\u2014</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums font-mono text-sm">
+                      {cycle.tranche_amount_usd != null
+                        ? `$${Number(cycle.tranche_amount_usd).toLocaleString()}`
+                        : formatAED(Number(cycle.amount))}
+                    </TableCell>
+                    <TableCell className="text-sm tabular-nums">
+                      {cycle.tranche_percentage != null
+                        ? `${Number(cycle.tranche_percentage).toFixed(2)}%`
+                        : "\u2014"}
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -205,20 +267,13 @@ export default async function PaymentCyclesPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-center">
-                      {cycle.finance_sync_id ? (
-                        <div className="flex items-center justify-center gap-1.5">
-                          <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                          <span className="text-xs text-muted-foreground">
-                            {cycle.last_sync_at
-                              ? formatDate(cycle.last_sync_at)
-                              : "Synced"}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">
-                          Not synced
-                        </span>
-                      )}
+                      <FinanceSyncBadge
+                        status={cycle.finance_post_status}
+                        lastPostedAt={cycle.last_finance_post_at}
+                        errorMessage={cycle.last_finance_post_error}
+                        recordId={cycle.id}
+                        resyncAction={resyncPaymentCycleAction}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}

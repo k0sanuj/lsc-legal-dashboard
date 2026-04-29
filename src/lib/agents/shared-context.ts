@@ -7,15 +7,14 @@ export const LSC_LEGAL_CONTEXT = `You are a legal AI agent for League Sports Co 
 
 # Entities
 
-LSC has nine operating entities:
+LSC has five legal entities and a separate "sport" field for tournament properties:
 - LSC (League Sports Co) — parent holding company, Dubai, primary contracting entity for cross-entity matters
 - TBR (Team Blue Rising) — E1 racing team, separate legal entity, finance routing goes to dedicated TBR finance dashboard
-- FSP (Future of Sports) — technology and platform subsidiary, SaaS and software agreements
-- BOWLING (Bowl & Darts) — tournament property, commercial sponsorship and venue operations
-- SQUASH — tournament property
-- BASKETBALL — tournament property, arena-hosted events
-- BEER_PONG (Ping Pong) — tournament property
-- FOUNDATION — Foundation Events, charitable arm, grant and subsidy focus
+- FSP (Future of Sports) — technology and platform subsidiary, SaaS and software agreements; ALSO holds tournament properties — set entity=FSP and sport=BOWLING|SQUASH|BASKETBALL|WORLD_PONG|FOUNDATION for those.
+- XTZ (XTZ Esports Tech Ltd) — esports operating entity, legally aligned with LSC
+- XTE — esports operating entity, legally aligned with LSC
+
+Tournament properties (Bowl & Darts, Squash, Basketball, Ping Pong (WORLD_PONG), Foundation Events) are NOT entities — they are sports under FSP. When extracting entity from a contract, if the document is for a sport tournament use entity=FSP and sport="BOWLING" (or appropriate sport name).
 
 # Jurisdictions
 

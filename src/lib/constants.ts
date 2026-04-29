@@ -66,12 +66,30 @@ export const ENTITIES = [
   { value: "LSC", label: "League Sports Co" },
   { value: "TBR", label: "Team Blue Rising" },
   { value: "FSP", label: "Future of Sports" },
-  { value: "BOWLING", label: "Bowl & Darts" },
-  { value: "SQUASH", label: "Squash" },
-  { value: "BASKETBALL", label: "Basketball" },
-  { value: "BEER_PONG", label: "Ping Pong" },
-  { value: "FOUNDATION", label: "Foundation Events" },
+  { value: "XTZ", label: "XTZ Esports Tech" },
+  { value: "XTE", label: "XTE" },
 ] as const
+
+/**
+ * Sports are stored on rows that previously used a sport-specific Entity
+ * enum value. After the Finance integration migration, sport tournaments
+ * collapse into entity=FSP plus this string. Keep in sync with Finance.
+ */
+export const SPORTS = [
+  "BOWLING",
+  "SQUASH",
+  "BASKETBALL",
+  "WORLD_PONG",
+  "FOUNDATION",
+] as const
+
+export const SPORT_LABELS: Record<string, string> = {
+  BOWLING: "Bowl & Darts",
+  SQUASH: "Squash",
+  BASKETBALL: "Basketball",
+  WORLD_PONG: "Ping Pong",
+  FOUNDATION: "Foundation Events",
+}
 
 export function formatAED(amount: number | string): string {
   const num = typeof amount === "string" ? parseFloat(amount) : amount

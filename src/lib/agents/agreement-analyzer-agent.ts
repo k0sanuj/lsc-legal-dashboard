@@ -37,7 +37,8 @@ Output JSON schema:
   },
   "unusualClauses": [{ "clause": "string", "concern": "string", "riskLevel": "low|medium|high" }],
   "counterparty": "string or null",
-  "entity": "<one of the Entity enum values> or null"
+  "entity": "LSC|TBR|FSP|XTZ|XTE or null",
+  "sport": "BOWLING|SQUASH|BASKETBALL|WORLD_PONG|FOUNDATION (when entity=FSP and contract is for a tournament property) or null"
 }`
 
 const SYSTEM_PROMPT = `${LSC_LEGAL_CONTEXT}\n\n${TASK_INSTRUCTIONS}`
@@ -144,15 +145,6 @@ export class AgreementAnalyzerAgent extends BaseAgent {
 
 /** Validate entity string against the Entity enum values */
 function isValidEntity(value: string): boolean {
-  const validEntities = [
-    'LSC',
-    'TBR',
-    'FSP',
-    'BOWLING',
-    'SQUASH',
-    'BASKETBALL',
-    'BEER_PONG',
-    'FOUNDATION',
-  ]
+  const validEntities = ['LSC', 'TBR', 'FSP', 'XTZ', 'XTE']
   return validEntities.includes(value)
 }
