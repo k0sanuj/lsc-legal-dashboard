@@ -56,7 +56,11 @@ export default async function SignaturesPage({
       lifecycle_status: true,
       counterparty: true,
       value: true,
+      file_url: true,
       updated_at: true,
+      signature_requests: {
+        select: { status: true },
+      },
     },
   })
 
@@ -76,6 +80,10 @@ export default async function SignaturesPage({
           entity: true,
           category: true,
           value: true,
+          file_url: true,
+          signature_requests: {
+            select: { status: true },
+          },
         },
       },
     },
@@ -89,16 +97,28 @@ export default async function SignaturesPage({
     color: col.color,
     items: pipelineDocs
       .filter((d) => d.lifecycle_status === col.status)
-      .map((d) => ({
-        id: `doc_${d.id}`,
-        documentTitle: d.title,
-        signatoryName: d.counterparty ?? "—",
-        daysInStatus: daysInStatus(d.updated_at),
-        value: d.value ? formatAED(d.value.toString()) : null,
-        documentId: d.id,
-        entity: getEntityLabel(d.entity),
-        category: d.category.replace(/_/g, " "),
-      })),
+      .map((d) => {
+        const pendingSignatureCount = d.signature_requests.filter(
+          (request) => request.status === "PENDING"
+        ).length
+
+        return {
+          id: `doc_${d.id}`,
+          documentTitle: d.title,
+          signatoryName: d.counterparty ?? "—",
+          daysInStatus: daysInStatus(d.updated_at),
+          value: d.value ? formatAED(d.value.toString()) : null,
+          documentId: d.id,
+          entity: getEntityLabel(d.entity),
+          category: d.category.replace(/_/g, " "),
+          pendingSignatureCount,
+          hasFile: Boolean(d.file_url),
+          canPrepareSignature:
+            pendingSignatureCount > 0 &&
+            Boolean(d.file_url) &&
+            ["NEGOTIATION", "AWAITING_SIGNATURE"].includes(d.lifecycle_status),
+        }
+      }),
   }))
 
   // Build signature columns
@@ -108,16 +128,25 @@ export default async function SignaturesPage({
     color: col.color,
     items: requests
       .filter((r) => r.status === col.status)
-      .map((r) => ({
-        id: r.id,
-        documentTitle: r.document.title,
-        signatoryName: r.signatory_name,
-        daysInStatus: daysInStatus(r.sent_at ?? r.created_at),
-        value: r.document.value ? formatAED(r.document.value.toString()) : null,
-        documentId: r.document.id,
-        entity: getEntityLabel(r.document.entity),
-        category: r.document.category.replace(/_/g, " "),
-      })),
+      .map((r) => {
+        const pendingSignatureCount = r.document.signature_requests.filter(
+          (request) => request.status === "PENDING"
+        ).length
+
+        return {
+          id: r.id,
+          documentTitle: r.document.title,
+          signatoryName: r.signatory_name,
+          daysInStatus: daysInStatus(r.sent_at ?? r.created_at),
+          value: r.document.value ? formatAED(r.document.value.toString()) : null,
+          documentId: r.document.id,
+          entity: getEntityLabel(r.document.entity),
+          category: r.document.category.replace(/_/g, " "),
+          pendingSignatureCount,
+          hasFile: Boolean(r.document.file_url),
+          canPrepareSignature: r.status === "PENDING" && pendingSignatureCount > 0,
+        }
+      }),
   }))
 
   const allColumns = [...docColumns, ...sigColumns]

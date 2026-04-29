@@ -15,6 +15,8 @@ import { useDraggable, useDroppable } from "@dnd-kit/core"
 import { updateSignatureStatus } from "@/actions/signatures"
 import { transitionDocument } from "@/actions/documents"
 import { FileText, User, Clock, Building, Tag } from "lucide-react"
+import { DropboxSignPrepButton } from "@/components/legal/send-for-signature-button"
+import type { LifecycleStatus, SignatureStatus } from "@/generated/prisma/client"
 
 interface KanbanItem {
   id: string
@@ -25,6 +27,9 @@ interface KanbanItem {
   documentId: string
   entity?: string
   category?: string
+  pendingSignatureCount?: number
+  hasFile?: boolean
+  canPrepareSignature?: boolean
 }
 
 interface KanbanColumn {
@@ -110,7 +115,13 @@ function DraggableCard({ item }: { item: KanbanItem }) {
   )
 }
 
-function ItemContent({ item }: { item: KanbanItem }) {
+function ItemContent({
+  item,
+  showAction = true,
+}: {
+  item: KanbanItem
+  showAction?: boolean
+}) {
   return (
     <>
       <div className="flex items-start gap-2">
@@ -155,19 +166,35 @@ function ItemContent({ item }: { item: KanbanItem }) {
           </span>
         )}
       </div>
+      {showAction && item.canPrepareSignature && (
+        <div className="pt-1">
+          <DropboxSignPrepButton
+            documentId={item.documentId}
+            pendingCount={item.pendingSignatureCount ?? 0}
+            disabled={!item.hasFile}
+            compact
+            stopPropagation
+          />
+        </div>
+      )}
     </>
   )
 }
 
 // Map column IDs to document lifecycle transitions
-const DOC_TRANSITION_MAP: Record<string, string> = {
+const DOC_TRANSITION_MAP: Record<string, LifecycleStatus> = {
   doc_DRAFT: "DRAFT",
   doc_IN_REVIEW: "IN_REVIEW",
   doc_NEGOTIATION: "NEGOTIATION",
   doc_AWAITING_SIGNATURE: "AWAITING_SIGNATURE",
 }
 
-const SIG_STATUSES = new Set(["PENDING", "SENT", "SIGNED", "STALLED"])
+const SIG_STATUSES = new Set<SignatureStatus>([
+  "PENDING",
+  "SENT",
+  "SIGNED",
+  "STALLED",
+])
 
 export function SignatureKanban({ columns: initialColumns }: SignatureKanbanProps) {
   const dndId = useId()
@@ -231,13 +258,13 @@ export function SignatureKanban({ columns: initialColumns }: SignatureKanbanProp
         const realDocId = activeId.replace("doc_", "")
         const toStatus = DOC_TRANSITION_MAP[destColumnId]
         if (toStatus) {
-          await transitionDocument(realDocId, toStatus as any)
+          await transitionDocument(realDocId, toStatus)
         }
-      } else if (!isDocItem && SIG_STATUSES.has(destColumnId)) {
+      } else if (!isDocItem && SIG_STATUSES.has(destColumnId as SignatureStatus)) {
         // Signature status update
         await updateSignatureStatus(
           activeId,
-          destColumnId as "PENDING" | "SENT" | "SIGNED" | "STALLED"
+          destColumnId as SignatureStatus
         )
       }
     } catch {
@@ -271,7 +298,7 @@ export function SignatureKanban({ columns: initialColumns }: SignatureKanbanProp
       <DragOverlay>
         {activeItem ? (
           <div className="rounded-lg border border-border/50 bg-card p-3 shadow-xl space-y-1.5 w-[220px]">
-            <ItemContent item={activeItem} />
+            <ItemContent item={activeItem} showAction={false} />
           </div>
         ) : null}
       </DragOverlay>

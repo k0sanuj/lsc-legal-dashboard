@@ -145,6 +145,7 @@ export default async function DocumentDetailPage({
             <SendForSignatureButton
               documentId={document.id}
               pendingCount={pendingSignatureCount}
+              disabled={!document.file_url}
             />
           )}
         </div>

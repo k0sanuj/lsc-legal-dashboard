@@ -326,6 +326,7 @@ model LegalDocument {
   audit_documents    AuditDocument[]    @relation("DocumentAuditDocs")
   notes_entries      DocumentNote[]
   comments           DocumentComment[]
+  webhook_events     WebhookEventLog[]
 
   @@index([entity, lifecycle_status])
   @@index([expiry_date])
@@ -381,6 +382,27 @@ model SignatureRequest {
 
   @@index([document_id, status])
   @@index([status])
+}
+
+model WebhookEventLog {
+  id                   String   @id @default(uuid())
+  provider             String
+  event_hash           String   @unique
+  event_type           String
+  signature_request_id String?
+  document_id          String?
+  processing_status    String   @default("received")
+  raw_payload          Json?
+  error                String?
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+  processed_at         DateTime?
+
+  document LegalDocument? @relation(fields: [document_id], references: [id], onDelete: SetNull)
+
+  @@index([provider, event_type])
+  @@index([signature_request_id])
+  @@index([document_id])
 }
 
 // ─── Templates ───────────────────────────────────────────────────────────────

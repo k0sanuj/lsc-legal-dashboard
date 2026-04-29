@@ -27,10 +27,15 @@ Agents are instantiated in `src/lib/agents/orchestrator.ts`.
 - `src/app/api/webhooks/gmail/route.ts`
   - Creates incoming notices and runs invoice detection against recent Gmail messages.
 - `src/actions/hellosign.ts`
-  - Sends uploaded document files to Dropbox Sign using `fileUrls`.
-  - Stores the returned `signatureRequestId` in `LegalDocument.hellosign_envelope_id`.
+  - Creates a Dropbox Sign Embedded Requesting unclaimed draft using `fileUrls`.
+  - Returns the embedded `claimUrl` to the client; Dropbox Sign sends signer emails after the requester prepares and sends from the iframe.
+  - Stores the returned `signatureRequestId` in `LegalDocument.hellosign_envelope_id` when Dropbox Sign provides it.
 - `src/app/api/webhooks/hellosign/route.ts`
+  - Parses Dropbox Sign `multipart/form-data` callbacks from the `json` field.
+  - Verifies the callback HMAC via `EventCallbackHelper` before processing.
+  - Dedupes callbacks with `WebhookEventLog.event_hash`.
   - Uses `hellosign_envelope_id` first and title only as a legacy fallback.
+  - On all-signed callbacks, downloads the completed PDF, stores it in S3 as a document version, and emits the Legal -> Finance contract event.
 - `src/app/api/cron/*.ts`
   - All cron routes must require `CRON_SECRET`. Missing secrets must deny requests.
 
@@ -42,7 +47,7 @@ Production needs these variables in Vercel, not committed `.env` files:
 - Cron: `CRON_SECRET`
 - AI: `AI_PROVIDER`, `ANTHROPIC_API_KEY`, optional `GEMINI_API_KEY`
 - S3: `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`
-- Dropbox Sign: `HELLOSIGN_API_KEY`
+- Dropbox Sign: `HELLOSIGN_API_KEY`, `HELLOSIGN_CLIENT_ID`, `HELLOSIGN_TEST_MODE`
 - Gmail: `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_CLOUD_PROJECT_ID`
 - Gmail webhook: `GMAIL_WEBHOOK_SECRET`
 - Finance webhook: `FINANCE_WEBHOOK_URL`, `FINANCE_WEBHOOK_KEY`, `FINANCE_WEBHOOK_SECRET`
