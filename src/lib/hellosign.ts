@@ -18,6 +18,9 @@ export async function sendSignatureRequest(params: {
   request.title = params.title
   request.subject = params.subject
   request.message = params.message
+  if (params.fileUrl) {
+    request.fileUrls = [params.fileUrl]
+  }
   request.signers = params.signers.map((s, i) => {
     const signer = new SubSignatureRequestSigner()
     signer.emailAddress = s.email

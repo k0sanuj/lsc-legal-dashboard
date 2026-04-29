@@ -10,6 +10,7 @@ export class ComplianceAgent extends BaseAgent {
 
   async run(): Promise<AgentResult> {
     const now = new Date()
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
     const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
 
     const findings: {
@@ -78,16 +79,15 @@ export class ComplianceAgent extends BaseAgent {
             ).map((u) => u.id)
 
       for (const userId of targetUserIds) {
-        await prisma.notification.create({
-          data: {
-            user_id: userId,
-            type: 'compliance_alert',
-            title: `Compliance Check: ${alertItems.length} item(s) require attention`,
-            message: alertItems.join('\n'),
-            link: '/compliance',
-          },
+        const created = await this.createNotificationOnce({
+          userId,
+          type: 'compliance_alert',
+          title: `Compliance Check: ${alertItems.length} item(s) require attention`,
+          message: alertItems.join('\n'),
+          link: '/compliance',
+          since: oneDayAgo,
         })
-        findings.notificationsCreated++
+        if (created) findings.notificationsCreated++
       }
     }
 
@@ -139,16 +139,15 @@ export class ComplianceAgent extends BaseAgent {
                 : 'UPCOMING'
 
         for (const userId of notifyIds) {
-          await prisma.notification.create({
-            data: {
-              user_id: userId,
-              type: 'office_renewal_alert',
-              title: `[${urgency}] Office Agreement Renewal — ${agreement.entity}`,
-              message: `Registered office at ${agreement.address} (${agreement.jurisdiction}) ${daysUntilRenewal <= 0 ? 'is OVERDUE for renewal' : `renews in ${daysUntilRenewal} day(s)`}.`,
-              link: '/compliance',
-            },
+          const created = await this.createNotificationOnce({
+            userId,
+            type: 'office_renewal_alert',
+            title: `[${urgency}] Office Agreement Renewal — ${agreement.entity}`,
+            message: `Registered office at ${agreement.address} (${agreement.jurisdiction}) ${daysUntilRenewal <= 0 ? 'is OVERDUE for renewal' : `renews in ${daysUntilRenewal} day(s)`}.`,
+            link: '/compliance',
+            since: oneDayAgo,
           })
-          findings.notificationsCreated++
+          if (created) findings.notificationsCreated++
         }
       }
     }
@@ -170,5 +169,44 @@ export class ComplianceAgent extends BaseAgent {
         details: findings,
       },
     }
+  }
+
+  private async createNotificationOnce({
+    userId,
+    type,
+    title,
+    message,
+    link,
+    since,
+  }: {
+    userId: string
+    type: string
+    title: string
+    message: string
+    link: string
+    since: Date
+  }): Promise<boolean> {
+    const existing = await prisma.notification.findFirst({
+      where: {
+        user_id: userId,
+        type,
+        title,
+        message,
+        created_at: { gte: since },
+      },
+      select: { id: true },
+    })
+    if (existing) return false
+
+    await prisma.notification.create({
+      data: {
+        user_id: userId,
+        type,
+        title,
+        message,
+        link,
+      },
+    })
+    return true
   }
 }

@@ -65,6 +65,10 @@ export class ActivationAgent extends BaseAgent {
       where: {
         agent_id: 'agreement-analyzer',
         action: 'analysis_complete',
+        details: {
+          path: ['documentId'],
+          equals: documentId,
+        },
       },
       orderBy: { created_at: 'desc' },
     })

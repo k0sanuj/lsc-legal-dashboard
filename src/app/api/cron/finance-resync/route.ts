@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { Prisma } from "@/generated/prisma/client"
 import { prisma } from "@/lib/prisma"
 import { postToFinance, type FinanceEventType } from "@/lib/finance-webhook"
+import { isAuthorizedCronRequest } from "@/lib/cron-auth"
 
 export const dynamic = "force-dynamic"
 
@@ -17,8 +18,7 @@ const FINANCE_EVENT_TYPES: FinanceEventType[] = [
 const MAX_ATTEMPTS = 6 // ~1.5h total at 15-min intervals
 
 export async function GET(request: Request) {
-  const auth = request.headers.get("authorization") ?? ""
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ ok: false }, { status: 401 })
   }
 

@@ -2,8 +2,13 @@ import { prisma } from '@/lib/prisma'
 import { getRecentMessages } from '@/lib/gmail'
 import { notifyAdmins } from '@/actions/notifications'
 import { runAgent } from '@/lib/agents/orchestrator'
+import { isAuthorizedSharedSecretRequest } from '@/lib/webhook-auth'
 
 export async function POST(request: Request) {
+  if (!isAuthorizedSharedSecretRequest(request, 'GMAIL_WEBHOOK_SECRET')) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const body = await request.json()
 
   // Gmail Pub/Sub sends base64 encoded data

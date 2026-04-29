@@ -12,13 +12,32 @@ export async function POST(request: NextRequest) {
 
   const eventType = event.event_type
   const signatureRequest = event.signature_request
+  const signatureRequestId =
+    signatureRequest?.signature_request_id ?? signatureRequest?.signatureRequestId
+  const signatureRequestTitle = signatureRequest?.title
 
   if (eventType === 'signature_request_signed') {
+    const linkedDoc = signatureRequestId || signatureRequestTitle
+      ? await prisma.legalDocument.findFirst({
+          where: {
+            OR: [
+              ...(signatureRequestId ? [{ hellosign_envelope_id: signatureRequestId }] : []),
+              ...(signatureRequestTitle ? [{ title: signatureRequestTitle }] : []),
+            ],
+          },
+          select: { id: true },
+        })
+      : null
+
     // A signer completed — update their SignatureRequest
     for (const signature of signatureRequest?.signatures ?? []) {
-      if (signature.status_code === 'signed') {
+      if (signature.status_code === 'signed' && linkedDoc) {
         await prisma.signatureRequest.updateMany({
-          where: { signatory_email: signature.signer_email_address, status: 'SENT' },
+          where: {
+            signatory_email: signature.signer_email_address,
+            status: 'SENT',
+            document_id: linkedDoc.id,
+          },
           data: { status: 'SIGNED', signed_at: new Date() },
         })
       }
@@ -27,11 +46,17 @@ export async function POST(request: NextRequest) {
 
   if (eventType === 'signature_request_all_signed') {
     // All signed — find and transition the document
-    // Match by title (HelloSign doesn't store our doc ID)
-    const title = signatureRequest?.title
-    if (title) {
+    // Prefer the persisted Dropbox Sign envelope id; title is a legacy fallback.
+    const title = signatureRequestTitle
+    if (signatureRequestId || title) {
       const doc = await prisma.legalDocument.findFirst({
-        where: { title, lifecycle_status: 'AWAITING_SIGNATURE' },
+        where: {
+          lifecycle_status: 'AWAITING_SIGNATURE',
+          OR: [
+            ...(signatureRequestId ? [{ hellosign_envelope_id: signatureRequestId }] : []),
+            ...(title ? [{ title }] : []),
+          ],
+        },
       })
       if (doc) {
         const updated = await prisma.legalDocument.update({

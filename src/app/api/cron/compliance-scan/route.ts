@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { runAgent } from '@/lib/agents/orchestrator'
+import { isAuthorizedCronRequest } from '@/lib/cron-auth'
 
 export async function GET(request: Request) {
-  const authHeader = request.headers.get('authorization')
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

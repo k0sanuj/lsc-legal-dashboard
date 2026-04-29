@@ -131,6 +131,7 @@ export class AgreementAnalyzerAgent extends BaseAgent {
     await this.log('analysis_complete', {
       documentId,
       category: analysis.suggestedCategory,
+      keyDates: analysis.keyDates,
       keyDatesCount: analysis.keyDates.length,
       obligationsCount: analysis.obligations.length,
       unusualClausesCount: analysis.unusualClauses.length,

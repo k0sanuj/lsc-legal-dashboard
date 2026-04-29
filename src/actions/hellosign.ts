@@ -19,14 +19,15 @@ export async function sendForSignature(documentId: string) {
     .map((sr) => ({ name: sr.signatory_name, email: sr.signatory_email }))
 
   if (signers.length === 0) return { success: false, error: 'No pending signatories' }
+  if (!doc.file_url) return { success: false, error: 'Document file required before sending for signature' }
 
   try {
-    await sendSignatureRequest({
+    const signatureRequest = await sendSignatureRequest({
       title: doc.title,
       subject: `Signature required: ${doc.title}`,
       message: `Please review and sign this document from League Sports Co.`,
       signers,
-      fileUrl: doc.file_url ?? undefined,
+      fileUrl: doc.file_url,
     })
 
     // Update signature requests to SENT
@@ -39,7 +40,10 @@ export async function sendForSignature(documentId: string) {
     if (doc.lifecycle_status === 'NEGOTIATION') {
       await prisma.legalDocument.update({
         where: { id: documentId },
-        data: { lifecycle_status: 'AWAITING_SIGNATURE' },
+        data: {
+          lifecycle_status: 'AWAITING_SIGNATURE',
+          hellosign_envelope_id: signatureRequest?.signatureRequestId ?? null,
+        },
       })
       await prisma.lifecycleEvent.create({
         data: {
@@ -49,6 +53,11 @@ export async function sendForSignature(documentId: string) {
           transitioned_by: session.userId,
           notes: 'Sent for signature via HelloSign',
         },
+      })
+    } else {
+      await prisma.legalDocument.update({
+        where: { id: documentId },
+        data: { hellosign_envelope_id: signatureRequest?.signatureRequestId ?? null },
       })
     }
 

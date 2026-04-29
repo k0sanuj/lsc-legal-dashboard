@@ -17,7 +17,7 @@ Agents live in `src/lib/agents/`. Each extends `BaseAgent` and implements `run()
 - Agents communicate via `AgentMessage` table, cross-dashboard via `CrossModuleEvent` table
 
 ## Tech Stack
-- **Framework**: Next.js 16.2.1 (App Router, Server Components)
+- **Framework**: Next.js 16.2.4 (App Router, Server Components)
 - **Database**: NeonDB (PostgreSQL) via Prisma 7.6.0
 - **UI**: shadcn/ui + Tailwind CSS v4 (dark mode primary)
 - **Charts**: Recharts
@@ -37,6 +37,7 @@ Agents live in `src/lib/agents/`. Each extends `BaseAgent` and implements `run()
 7. **AED is primary currency**: Format with `Intl.NumberFormat('en-AE', { style: 'currency', currency: 'AED' })`.
 
 ## Skills Reference
+- `.claude/skills/agentic-flows.md` — Current agent registry, lifecycle triggers, cron/webhook/Finance sync rules, verification checklist
 - `.claude/skills/design-system.md` — Colors, typography, component patterns, dark theme tokens
 - `.claude/skills/prisma-schema.md` — Full database schema with all models and enums
 - `.claude/skills/auth-pattern.md` — Cookie-based auth, roles, permissions, middleware
