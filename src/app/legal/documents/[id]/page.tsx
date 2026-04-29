@@ -33,6 +33,7 @@ import { CommentsPanel } from "@/components/legal/comments-panel"
 import { SendForSignatureButton } from "@/components/legal/send-for-signature-button"
 import { FileDisplay } from "@/components/legal/file-display"
 import { FileUpload } from "@/components/legal/file-upload"
+import { DocumentFinancePanel } from "@/components/legal/document-finance-panel"
 import { uploadDocumentFile, deleteDocumentFile, uploadVersionFile } from "@/actions/files"
 import type { SignatureStatus } from "@/generated/prisma/client"
 
@@ -75,6 +76,16 @@ export default async function DocumentDetailPage({
       comments: {
         orderBy: { created_at: "desc" },
         include: { author: { select: { full_name: true } } },
+      },
+      payment_cycles: {
+        orderBy: { tranche_number: "asc" },
+        select: {
+          id: true,
+          tranche_number: true,
+          tranche_label: true,
+          tranche_amount_usd: true,
+          finance_post_status: true,
+        },
       },
     },
   })
@@ -147,6 +158,7 @@ export default async function DocumentDetailPage({
           <TabsTrigger value={2}>Signatures</TabsTrigger>
           <TabsTrigger value={3}>Comments</TabsTrigger>
           <TabsTrigger value={4}>Audit Trail</TabsTrigger>
+          <TabsTrigger value={5}>Finance</TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
@@ -401,6 +413,46 @@ export default async function DocumentDetailPage({
               </div>
             )}
           </div>
+        </TabsContent>
+
+        {/* Finance Tab */}
+        <TabsContent value={5}>
+          <DocumentFinancePanel
+            documentId={document.id}
+            syncStatus={document.finance_post_status}
+            lastPostedAt={
+              document.last_finance_post_at
+                ? formatRelativeDate(document.last_finance_post_at)
+                : null
+            }
+            errorMessage={document.last_finance_post_error}
+            contract={{
+              contract_name: document.contract_name ?? document.title,
+              contract_value_usd: document.contract_value_usd
+                ? Number(document.contract_value_usd)
+                : null,
+              contract_status: document.contract_status,
+              sponsor_name: document.sponsor_name ?? document.counterparty,
+              contract_start_date: document.contract_start_date
+                ? formatDate(document.contract_start_date)
+                : null,
+              contract_end_date: document.contract_end_date
+                ? formatDate(document.contract_end_date)
+                : document.expiry_date
+                  ? formatDate(document.expiry_date)
+                  : null,
+              currency_code: document.currency_code,
+            }}
+            tranches={document.payment_cycles.map((t) => ({
+              id: t.id,
+              tranche_number: t.tranche_number,
+              tranche_label: t.tranche_label,
+              tranche_amount_usd: t.tranche_amount_usd
+                ? Number(t.tranche_amount_usd)
+                : null,
+              finance_post_status: t.finance_post_status,
+            }))}
+          />
         </TabsContent>
       </Tabs>
     </div>

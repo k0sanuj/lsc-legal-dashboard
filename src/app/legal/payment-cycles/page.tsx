@@ -74,7 +74,11 @@ export default async function PaymentCyclesPage({
         document: { select: { id: true, title: true } },
       },
     }),
+    // Hard-block: only documents that have been synced to Finance qualify
+    // as parents for new tranches. This avoids the "could not resolve
+    // contract" 400 from Finance and keeps the state machine clean.
     prisma.legalDocument.findMany({
+      where: { last_finance_post_at: { not: null } },
       orderBy: { updated_at: "desc" },
       select: { id: true, title: true },
       take: 100,

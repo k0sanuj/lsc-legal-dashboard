@@ -6,6 +6,8 @@ import { postToFinance, type FinanceEventType } from "@/lib/finance-webhook"
 export const dynamic = "force-dynamic"
 
 const FINANCE_EVENT_TYPES: FinanceEventType[] = [
+  "contract.created",
+  "contract.updated",
   "tranche.created",
   "tranche.updated",
   "share_grant.created",
@@ -101,6 +103,17 @@ export async function GET(request: Request) {
         })
     } else if (evt.entity_type === "ESOPGrant") {
       await prisma.eSOPGrant
+        .update({
+          where: { id: evt.entity_id },
+          data: {
+            last_finance_post_at: new Date(),
+            finance_post_status: result.ok ? "synced" : "failed",
+            last_finance_post_error: result.ok ? null : (result.error ?? "Unknown"),
+          },
+        })
+        .catch(() => {})
+    } else if (evt.entity_type === "LegalDocument") {
+      await prisma.legalDocument
         .update({
           where: { id: evt.entity_id },
           data: {

@@ -43,6 +43,25 @@ export function NewTrancheForm({ documents }: { documents: DocOption[] }) {
     })
   }
 
+  // Hard-block: if no documents have been synced to Finance, disable the
+  // trigger entirely. Operators can't create tranches whose parent contract
+  // Finance has never seen — Finance would reject them.
+  const noEligibleDocs = documents.length === 0
+
+  if (noEligibleDocs) {
+    return (
+      <button
+        type="button"
+        disabled
+        title="No documents have been synced to Finance yet. Sign a document to create its contract first."
+        className="inline-flex items-center justify-center gap-2 rounded-md bg-muted px-4 py-2 text-sm font-medium text-muted-foreground cursor-not-allowed"
+      >
+        <Plus className="size-4" />
+        New Tranche
+      </button>
+    )
+  }
+
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90 transition-colors">
@@ -55,8 +74,8 @@ export function NewTrancheForm({ documents }: { documents: DocOption[] }) {
         </SheetHeader>
 
         <p className="mt-2 text-xs text-muted-foreground">
-          Tip: the contract name must already exist on the Finance side, or the webhook
-          will be rejected. If unsure, ask Finance to create the contract first.
+          Tranches are linked to a parent contract by Document id. Finance will
+          attach this tranche to the matching contract automatically.
         </p>
 
         <form action={handleSubmit} className="mt-6 space-y-5">
@@ -76,19 +95,6 @@ export function NewTrancheForm({ documents }: { documents: DocOption[] }) {
                 </option>
               ))}
             </select>
-          </div>
-
-          {/* Contract name (denormalized for Finance lookup) */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Contract Name (Finance) *</label>
-            <Input
-              name="contractName"
-              required
-              placeholder="e.g. Etisalat Sponsorship 2026"
-            />
-            <p className="text-xs text-muted-foreground">
-              Must match the contract name registered on the Finance dashboard.
-            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

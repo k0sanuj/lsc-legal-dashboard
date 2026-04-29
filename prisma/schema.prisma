@@ -293,6 +293,25 @@ model LegalDocument {
   financial_impact_onetime   Decimal?
   auto_renew       Boolean          @default(false)
   hellosign_envelope_id String?
+
+  // Finance integration: contract metadata sent in contract.created /
+  // contract.updated webhook events
+  contract_name           String?
+  contract_value_usd      Decimal? @db.Decimal(14, 2)
+  currency_code           String?  @default("USD")
+  sponsor_name            String?
+  counterparty_type       String?  @default("sponsor") // "sponsor" | "customer"
+  contract_status         String?  @default("draft") // "draft" | "active" | "completed" | "cancelled"
+  contract_start_date     DateTime? @db.Date
+  contract_end_date       DateTime? @db.Date
+  is_recurring            Boolean  @default(false)
+  billing_frequency       String?
+
+  // Finance sync tracking
+  last_finance_post_at    DateTime?
+  finance_post_status     String? // "synced" | "pending" | "failed"
+  last_finance_post_error String?
+
   created_at       DateTime         @default(now())
   updated_at       DateTime         @updatedAt
 
@@ -312,6 +331,7 @@ model LegalDocument {
   @@index([expiry_date])
   @@index([owner_id])
   @@index([category])
+  @@index([finance_post_status])
 }
 
 model DocumentVersion {

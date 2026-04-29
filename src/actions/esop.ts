@@ -5,11 +5,8 @@ import { redirect } from "next/navigation"
 import { prisma } from "@/lib/prisma"
 import { requireRole } from "@/lib/auth"
 import { emitFinanceEvent } from "@/lib/finance-webhook"
-import {
-  defaultHolderType,
-  defaultShareClass,
-  mapEntityToCompanyCode,
-} from "@/lib/finance-mapping"
+import { defaultHolderType, defaultShareClass } from "@/lib/finance-mapping"
+import { buildShareGrantPayload } from "@/lib/finance-payloads"
 import type { Entity, VestingType } from "@/generated/prisma/client"
 
 const ALLOWED_ROLES = ["PLATFORM_ADMIN", "LEGAL_ADMIN", "FINANCE_ADMIN"] as const
@@ -74,23 +71,7 @@ export async function createEsopGrantAction(formData: FormData): Promise<void> {
 
   const result = await emitFinanceEvent(
     "share_grant.created",
-    {
-      legalExternalId: row.id,
-      companyCode: mapEntityToCompanyCode(entity),
-      sport,
-      holderName: employeeName,
-      holderEmail: employeeEmail,
-      holderType,
-      shareClass,
-      totalShares,
-      exercisePrice,
-      grantDate,
-      vestingStartDate,
-      vestingEndDate,
-      cliffMonths,
-      vestingMonths,
-      agreementReference,
-    },
+    buildShareGrantPayload(row),
     { entityType: "ESOPGrant", entityId: row.id }
   )
 
@@ -133,7 +114,7 @@ export async function updateEsopGrantAction(formData: FormData): Promise<void> {
   const agreementReference =
     String(formData.get("agreementReference") ?? "") || existing.agreement_reference
 
-  await prisma.eSOPGrant.update({
+  const updated = await prisma.eSOPGrant.update({
     where: { id },
     data: {
       total_shares: totalShares,
@@ -153,23 +134,7 @@ export async function updateEsopGrantAction(formData: FormData): Promise<void> {
 
   const result = await emitFinanceEvent(
     "share_grant.updated",
-    {
-      legalExternalId: id,
-      companyCode: mapEntityToCompanyCode(existing.entity),
-      sport: existing.sport ?? null,
-      holderName: existing.employee_name,
-      holderEmail: existing.employee_email,
-      holderType,
-      shareClass,
-      totalShares,
-      exercisePrice,
-      grantDate: existing.grant_date.toISOString().split("T")[0],
-      vestingStartDate,
-      vestingEndDate,
-      cliffMonths: existing.cliff_months,
-      vestingMonths: existing.vesting_months,
-      agreementReference,
-    },
+    buildShareGrantPayload(updated),
     { entityType: "ESOPGrant", entityId: id }
   )
 
@@ -200,23 +165,7 @@ export async function resyncEsopGrantAction(formData: FormData): Promise<void> {
 
   const result = await emitFinanceEvent(
     "share_grant.updated",
-    {
-      legalExternalId: row.id,
-      companyCode: mapEntityToCompanyCode(row.entity),
-      sport: row.sport ?? null,
-      holderName: row.employee_name,
-      holderEmail: row.employee_email,
-      holderType: row.holder_type ?? defaultHolderType(),
-      shareClass: row.share_class ?? defaultShareClass(),
-      totalShares: row.total_shares,
-      exercisePrice: Number(row.exercise_price),
-      grantDate: row.grant_date.toISOString().split("T")[0],
-      vestingStartDate: row.vesting_start_date?.toISOString().split("T")[0] ?? null,
-      vestingEndDate: row.vesting_end_date?.toISOString().split("T")[0] ?? null,
-      cliffMonths: row.cliff_months,
-      vestingMonths: row.vesting_months,
-      agreementReference: row.agreement_reference,
-    },
+    buildShareGrantPayload(row),
     { entityType: "ESOPGrant", entityId: row.id }
   )
 

@@ -17,6 +17,8 @@ const FINANCE_WEBHOOK_KEY = process.env.FINANCE_WEBHOOK_KEY ?? ""
 const FINANCE_WEBHOOK_SECRET = process.env.FINANCE_WEBHOOK_SECRET ?? ""
 
 export type FinanceEventType =
+  | "contract.created"
+  | "contract.updated"
   | "tranche.created"
   | "tranche.updated"
   | "share_grant.created"

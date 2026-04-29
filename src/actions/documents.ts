@@ -8,10 +8,74 @@ import { after } from "next/server"
 import { runAgent } from "@/lib/agents/orchestrator"
 import { uploadToS3, getS3Key } from "@/lib/s3"
 import { extractTextFromFile } from "@/lib/extract-text"
+import { emitFinanceEvent } from "@/lib/finance-webhook"
+import { buildContractPayload } from "@/lib/finance-payloads"
+import { mapLifecycleStatusToContractStatus } from "@/lib/finance-mapping"
 import type { AgentId } from "@/lib/agents/types"
-import type { LifecycleStatus } from "@/generated/prisma/client"
+import type { LegalDocument, LifecycleStatus } from "@/generated/prisma/client"
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+
+// Lifecycle states for which we mirror a contract to Finance. Pre-signature
+// drafts (DRAFT/IN_REVIEW/NEGOTIATION/AWAITING_SIGNATURE) are NOT synced —
+// Finance doesn't want speculative drafts in its ledger.
+const SYNC_FROM_STATES = new Set<LifecycleStatus>([
+  "SIGNED",
+  "ACTIVE",
+  "EXPIRING",
+  "EXPIRED",
+  "TERMINATED",
+])
+
+/**
+ * Decide whether a lifecycle transition warrants firing a Finance contract
+ * event, and if so, fire it. Mirrors sync status onto the LegalDocument.
+ *
+ * Rules:
+ *  - First time the doc lands in a syncable state AND it has never been
+ *    synced before (last_finance_post_at IS NULL) → contract.created
+ *  - Subsequent transitions while in a syncable state → contract.updated
+ *  - Pre-signature transitions → no-op (return early)
+ */
+async function maybeEmitContractEvent(documentId: string): Promise<void> {
+  const doc = await prisma.legalDocument.findUnique({ where: { id: documentId } })
+  if (!doc) return
+
+  if (!SYNC_FROM_STATES.has(doc.lifecycle_status)) {
+    return
+  }
+
+  const eventType = doc.last_finance_post_at ? "contract.updated" : "contract.created"
+
+  // Auto-derive contract_status from lifecycle_status for the payload.
+  const derivedStatus = mapLifecycleStatusToContractStatus(doc.lifecycle_status)
+  const docForPayload: LegalDocument = {
+    ...doc,
+    contract_status: doc.contract_status ?? derivedStatus,
+  }
+
+  await prisma.legalDocument.update({
+    where: { id: documentId },
+    data: {
+      contract_status: derivedStatus,
+      finance_post_status: "pending",
+    },
+  })
+
+  const result = await emitFinanceEvent(eventType, buildContractPayload(docForPayload), {
+    entityType: "LegalDocument",
+    entityId: documentId,
+  })
+
+  await prisma.legalDocument.update({
+    where: { id: documentId },
+    data: {
+      last_finance_post_at: new Date(),
+      finance_post_status: result.ok ? "synced" : "failed",
+      last_finance_post_error: result.ok ? null : (result.error ?? "Unknown error"),
+    },
+  })
+}
 
 // Maps a lifecycle transition to the agent that fires once the DB update
 // succeeds. Only the three high-value transitions trigger an AI agent —
@@ -180,24 +244,38 @@ export async function transitionDocument(
     revalidatePath("/legal/documents")
     revalidatePath(`/legal/documents/${documentId}`)
 
-    // Fire the transition-specific agent in the background so the user's
-    // request returns immediately. The agent's run()/log() writes will land
-    // before the serverless function terminates.
+    // Fire the transition-specific agent + Finance contract event in the
+    // background so the user's request returns immediately. The serverless
+    // function stays alive long enough via after() for both to complete.
     const agentId = TRANSITION_AGENT[`${currentStatus}->${toStatus}`]
-    if (agentId) {
-      const docContent = await prisma.legalDocument.findUnique({
-        where: { id: documentId },
-        select: { notes: true },
-      })
-      const input =
+    const willEmitFinance = SYNC_FROM_STATES.has(toStatus)
+
+    if (agentId || willEmitFinance) {
+      const docContent = agentId
+        ? await prisma.legalDocument.findUnique({
+            where: { id: documentId },
+            select: { notes: true },
+          })
+        : null
+      const agentInput =
         agentId === "agreement-analyzer"
           ? { documentId, content: docContent?.notes ?? "" }
           : { documentId }
+
       after(async () => {
-        try {
-          await runAgent(agentId, input)
-        } catch (err) {
-          console.error(`Lifecycle agent ${agentId} failed for ${documentId}:`, err)
+        if (agentId) {
+          try {
+            await runAgent(agentId, agentInput)
+          } catch (err) {
+            console.error(`Lifecycle agent ${agentId} failed for ${documentId}:`, err)
+          }
+        }
+        if (willEmitFinance) {
+          try {
+            await maybeEmitContractEvent(documentId)
+          } catch (err) {
+            console.error(`Finance contract event failed for ${documentId}:`, err)
+          }
         }
       })
     }
@@ -207,4 +285,39 @@ export async function transitionDocument(
     console.error("Failed to transition document:", error)
     return { success: false, error: "Failed to transition document." }
   }
+}
+
+/**
+ * Manual resync trigger from the document detail page's Finance tab.
+ * Fires `contract.updated` with the latest payload and mirrors sync status
+ * back onto the row.
+ */
+export async function resyncDocumentToFinance(formData: FormData): Promise<void> {
+  await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "FINANCE_ADMIN"])
+
+  const id = String(formData.get("id") ?? "")
+  if (!id) return
+
+  const doc = await prisma.legalDocument.findUnique({ where: { id } })
+  if (!doc) return
+
+  // Treat resync as create if the doc was never synced before — otherwise
+  // Finance would 404 looking for a contract to update.
+  const eventType = doc.last_finance_post_at ? "contract.updated" : "contract.created"
+
+  const result = await emitFinanceEvent(eventType, buildContractPayload(doc), {
+    entityType: "LegalDocument",
+    entityId: doc.id,
+  })
+
+  await prisma.legalDocument.update({
+    where: { id },
+    data: {
+      last_finance_post_at: new Date(),
+      finance_post_status: result.ok ? "synced" : "failed",
+      last_finance_post_error: result.ok ? null : (result.error ?? "Unknown error"),
+    },
+  })
+
+  revalidatePath(`/legal/documents/${id}`)
 }

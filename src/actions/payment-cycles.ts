@@ -5,7 +5,7 @@ import { redirect } from "next/navigation"
 import { prisma } from "@/lib/prisma"
 import { requireRole } from "@/lib/auth"
 import { emitFinanceEvent } from "@/lib/finance-webhook"
-import { inferTriggerType, mapEntityToCompanyCode } from "@/lib/finance-mapping"
+import { buildTranchePayload } from "@/lib/finance-payloads"
 import type { PaymentTerms } from "@/generated/prisma/client"
 
 const ALLOWED_ROLES = ["PLATFORM_ADMIN", "LEGAL_ADMIN", "FINANCE_ADMIN"] as const
@@ -28,27 +28,32 @@ export async function createPaymentCycleAction(formData: FormData): Promise<void
   const explicitTrigger = String(formData.get("triggerType") ?? "") || null
   const triggerDate = String(formData.get("triggerDate") ?? "") || null
   const triggerOffsetDays = Number(formData.get("triggerOffsetDays") ?? 0)
-  const contractName = String(formData.get("contractName") ?? "")
   const notes = String(formData.get("notes") ?? "") || null
   const termsInput = parseTerms(formData.get("terms") as string | null)
   const customTerms = String(formData.get("customTerms") ?? "") || null
   const amount = Number(formData.get("amount") ?? trancheAmountUsd)
   const currency = String(formData.get("currency") ?? "USD")
 
-  if (!documentId || !contractName) {
-    redirect("/legal/payment-cycles?error=missing+required+fields")
+  if (!documentId) {
+    redirect("/legal/payment-cycles?error=missing+document")
   }
 
   const doc = await prisma.legalDocument.findUnique({
     where: { id: documentId },
-    select: { entity: true, sport: true, title: true },
+    select: { entity: true, sport: true, title: true, last_finance_post_at: true },
   })
   if (!doc) {
     redirect("/legal/payment-cycles?error=document+not+found")
   }
 
-  const triggerType = inferTriggerType(termsInput, explicitTrigger)
-  const companyCode = mapEntityToCompanyCode(doc.entity)
+  // Server-side guard mirroring the UI hard-block: refuse to fire a tranche
+  // event if the parent contract hasn't been synced to Finance yet.
+  // Finance would return 400 ("could not resolve contract") otherwise.
+  if (!doc.last_finance_post_at) {
+    redirect(
+      "/legal/payment-cycles?status=error&message=Document+has+not+been+synced+to+Finance+yet.+Sign+the+document+first."
+    )
+  }
 
   const row = await prisma.paymentCycle.create({
     data: {
@@ -61,33 +66,23 @@ export async function createPaymentCycleAction(formData: FormData): Promise<void
       tranche_label: trancheLabel,
       tranche_percentage: tranchePercentage,
       tranche_amount_usd: trancheAmountUsd,
-      trigger_type: triggerType,
+      trigger_type: explicitTrigger ?? undefined,
       trigger_date: triggerDate ? new Date(triggerDate) : null,
       trigger_offset_days: triggerOffsetDays,
-      contract_name: contractName,
       notes,
       finance_post_status: "pending",
     },
   })
 
-  // Fire to Finance — non-blocking. The CrossModuleEvent row is the
-  // durable queue; cron retries on failure.
+  // Reload with parent doc fields the payload builder needs
+  const cycleWithDoc = await prisma.paymentCycle.findUniqueOrThrow({
+    where: { id: row.id },
+    include: { document: { select: { entity: true, sport: true } } },
+  })
+
   const result = await emitFinanceEvent(
     "tranche.created",
-    {
-      legalExternalId: row.id,
-      companyCode,
-      contractName,
-      trancheNumber,
-      trancheLabel,
-      tranchePercentage,
-      trancheAmount: trancheAmountUsd,
-      triggerType,
-      triggerDate,
-      triggerOffsetDays,
-      sport: doc.sport ?? null,
-      notes,
-    },
+    buildTranchePayload(cycleWithDoc as any),
     { entityType: "PaymentCycle", entityId: row.id }
   )
 
@@ -133,10 +128,9 @@ export async function updatePaymentCycleAction(formData: FormData): Promise<void
   const triggerOffsetDays = Number(
     formData.get("triggerOffsetDays") ?? existing.trigger_offset_days ?? 0
   )
-  const contractName = String(formData.get("contractName") ?? existing.contract_name ?? "")
   const notes = String(formData.get("notes") ?? existing.notes ?? "") || null
 
-  await prisma.paymentCycle.update({
+  const updated = await prisma.paymentCycle.update({
     where: { id },
     data: {
       tranche_number: trancheNumber,
@@ -146,28 +140,15 @@ export async function updatePaymentCycleAction(formData: FormData): Promise<void
       trigger_type: triggerType,
       trigger_date: triggerDate ? new Date(triggerDate) : null,
       trigger_offset_days: triggerOffsetDays,
-      contract_name: contractName,
       notes,
       finance_post_status: "pending",
     },
+    include: { document: { select: { entity: true, sport: true } } },
   })
 
   const result = await emitFinanceEvent(
     "tranche.updated",
-    {
-      legalExternalId: id,
-      companyCode: mapEntityToCompanyCode(existing.document.entity),
-      contractName,
-      trancheNumber,
-      trancheLabel,
-      tranchePercentage,
-      trancheAmount: trancheAmountUsd,
-      triggerType,
-      triggerDate,
-      triggerOffsetDays,
-      sport: existing.document.sport ?? null,
-      notes,
-    },
+    buildTranchePayload(updated as any),
     { entityType: "PaymentCycle", entityId: id }
   )
 
@@ -202,20 +183,7 @@ export async function resyncPaymentCycleAction(formData: FormData): Promise<void
 
   const result = await emitFinanceEvent(
     "tranche.updated",
-    {
-      legalExternalId: row.id,
-      companyCode: mapEntityToCompanyCode(row.document.entity),
-      contractName: row.contract_name ?? "",
-      trancheNumber: row.tranche_number ?? null,
-      trancheLabel: row.tranche_label ?? null,
-      tranchePercentage: row.tranche_percentage ? Number(row.tranche_percentage) : null,
-      trancheAmount: row.tranche_amount_usd ? Number(row.tranche_amount_usd) : null,
-      triggerType: row.trigger_type ?? "on_date",
-      triggerDate: row.trigger_date?.toISOString().split("T")[0] ?? null,
-      triggerOffsetDays: row.trigger_offset_days ?? 0,
-      sport: row.document.sport ?? null,
-      notes: row.notes ?? null,
-    },
+    buildTranchePayload(row as any),
     { entityType: "PaymentCycle", entityId: row.id }
   )
 

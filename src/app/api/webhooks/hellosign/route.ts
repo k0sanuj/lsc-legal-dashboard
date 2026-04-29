@@ -1,5 +1,8 @@
 import { prisma } from '@/lib/prisma'
 import { NextRequest } from 'next/server'
+import { emitFinanceEvent } from '@/lib/finance-webhook'
+import { buildContractPayload } from '@/lib/finance-payloads'
+import { mapLifecycleStatusToContractStatus } from '@/lib/finance-mapping'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
@@ -31,9 +34,13 @@ export async function POST(request: NextRequest) {
         where: { title, lifecycle_status: 'AWAITING_SIGNATURE' },
       })
       if (doc) {
-        await prisma.legalDocument.update({
+        const updated = await prisma.legalDocument.update({
           where: { id: doc.id },
-          data: { lifecycle_status: 'SIGNED' },
+          data: {
+            lifecycle_status: 'SIGNED',
+            // Auto-promote contract_status so the Finance payload is correct
+            contract_status: mapLifecycleStatusToContractStatus('SIGNED'),
+          },
         })
         await prisma.lifecycleEvent.create({
           data: {
@@ -44,6 +51,34 @@ export async function POST(request: NextRequest) {
             notes: 'All parties signed via HelloSign',
           },
         })
+
+        // Mirror to Finance — first-time = contract.created, otherwise update.
+        // Errors are logged; the durable queue + cron handles retries.
+        try {
+          const eventType = doc.last_finance_post_at
+            ? 'contract.updated'
+            : 'contract.created'
+          const result = await emitFinanceEvent(
+            eventType,
+            buildContractPayload(updated),
+            { entityType: 'LegalDocument', entityId: updated.id }
+          )
+          await prisma.legalDocument.update({
+            where: { id: updated.id },
+            data: {
+              last_finance_post_at: new Date(),
+              finance_post_status: result.ok ? 'synced' : 'failed',
+              last_finance_post_error: result.ok
+                ? null
+                : (result.error ?? 'Unknown error'),
+            },
+          })
+        } catch (err) {
+          console.error(
+            `HelloSign → Finance sync failed for doc ${updated.id}:`,
+            err
+          )
+        }
       }
     }
   }

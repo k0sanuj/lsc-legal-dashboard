@@ -2,7 +2,7 @@
  * Helpers that translate Legal-side concepts into Finance-side fields.
  * Used by payment-cycle and esop server actions.
  */
-import type { Entity, PaymentTerms } from "@/generated/prisma/client"
+import type { Entity, LifecycleStatus, PaymentTerms } from "@/generated/prisma/client"
 
 /**
  * After the Entity-enum collapse, Legal's Entity maps 1:1 to Finance's
@@ -52,4 +52,28 @@ export function defaultShareClass(): "common" | "preferred_a" | "preferred_b" | 
 
 export function defaultHolderType(): "founder" | "employee" | "investor" | "advisor" {
   return "employee"
+}
+
+export type ContractStatus = "draft" | "active" | "completed" | "cancelled"
+
+/**
+ * Map our 9-state LifecycleStatus to Finance's 4-state contract_status.
+ * Pre-signature states all collapse to "draft" (Finance doesn't want them);
+ * EXPIRING is still "active" because the contract is operationally live
+ * until it actually expires.
+ */
+export function mapLifecycleStatusToContractStatus(s: LifecycleStatus): ContractStatus {
+  switch (s) {
+    case "SIGNED":
+    case "ACTIVE":
+    case "EXPIRING":
+      return "active"
+    case "EXPIRED":
+      return "completed"
+    case "TERMINATED":
+      return "cancelled"
+    default:
+      // DRAFT, IN_REVIEW, NEGOTIATION, AWAITING_SIGNATURE
+      return "draft"
+  }
 }
