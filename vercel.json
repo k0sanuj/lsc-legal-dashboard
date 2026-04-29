@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/cron/finance-resync",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 9 * * *"
     }
   ]
 }
