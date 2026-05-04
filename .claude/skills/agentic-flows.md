@@ -25,7 +25,12 @@ Agents are instantiated in `src/lib/agents/orchestrator.ts`.
   - `SIGNED -> ACTIVE`: schedules `activation`.
   - Any transition into `SIGNED`, `ACTIVE`, `EXPIRING`, `EXPIRED`, or `TERMINATED`: emits a Finance contract event.
 - `src/app/api/webhooks/gmail/route.ts`
-  - Creates incoming notices and runs invoice detection against recent Gmail messages.
+  - Requires `GMAIL_WEBHOOK_SECRET` via query token or `x-lsc-webhook-secret`.
+  - Decodes Pub/Sub `message.data.emailAddress` and only processes mailboxes in `GMAIL_WATCH_MAILBOXES`.
+  - Creates incoming notices and runs invoice detection against recent Gmail messages for the changed mailbox.
+- `src/app/api/cron/gmail-watch/route.ts`
+  - Protected by `CRON_SECRET`.
+  - Renews Gmail watches daily for all mailboxes in `GMAIL_WATCH_MAILBOXES`.
 - `src/actions/hellosign.ts`
   - Creates a Dropbox Sign Embedded Requesting unclaimed draft using `fileUrls`.
   - Returns the embedded `claimUrl` to the client; Dropbox Sign sends signer emails after the requester prepares and sends from the iframe.
@@ -49,7 +54,7 @@ Production needs these variables in Vercel, not committed `.env` files:
 - S3: `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`
 - Dropbox Sign: `HELLOSIGN_API_KEY`, `HELLOSIGN_CLIENT_ID`, `HELLOSIGN_TEST_MODE`
 - Gmail: `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_CLOUD_PROJECT_ID`
-- Gmail webhook: `GMAIL_WEBHOOK_SECRET`
+- Gmail webhook: `GMAIL_WEBHOOK_SECRET`, `GMAIL_WATCH_MAILBOXES`
 - Finance webhook: `FINANCE_WEBHOOK_URL`, `FINANCE_WEBHOOK_KEY`, `FINANCE_WEBHOOK_SECRET`
 
 ## Legal -> Finance Contract Events

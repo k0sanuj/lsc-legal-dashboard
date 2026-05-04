@@ -21,7 +21,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { AlertCircle, ShieldCheck, Inbox } from "lucide-react"
 import { IncomingNoticeForm } from "@/components/legal/incoming-notice-form"
-import type { ComplianceStatus, Jurisdiction, NoticeStatus } from "@/generated/prisma/client"
+import type { ComplianceStatus, Jurisdiction } from "@/generated/prisma/client"
 
 const STATUS_STYLES: Record<ComplianceStatus, string> = {
   UPCOMING: "bg-blue-500/10 text-blue-400 border-blue-500/20",
@@ -259,6 +259,7 @@ export default async function CompliancePage({
                 <TableRow>
                   <TableHead>Subject</TableHead>
                   <TableHead>Category</TableHead>
+                  <TableHead>Mailbox</TableHead>
                   <TableHead>From</TableHead>
                   <TableHead>Received</TableHead>
                   <TableHead>Assigned To</TableHead>
@@ -273,6 +274,9 @@ export default async function CompliancePage({
                       <Badge variant="secondary">
                         {notice.category.replace(/_/g, " ")}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {notice.source_mailbox ?? "\u2014"}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {notice.from_email ?? "\u2014"}

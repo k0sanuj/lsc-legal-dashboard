@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { getRecentMessages } from '@/lib/gmail'
+import { decodeGmailPubSubData, getRecentMessages, isWatchedMailbox } from '@/lib/gmail'
 import { notifyAdmins } from '@/actions/notifications'
 import { runAgent } from '@/lib/agents/orchestrator'
 import { isAuthorizedSharedSecretRequest } from '@/lib/webhook-auth'
@@ -15,14 +15,24 @@ export async function POST(request: Request) {
   const data = body?.message?.data
   if (!data) return Response.json({ ok: true })
 
-  // Fetch recent unread messages
+  const notification = decodeGmailPubSubData(data)
+  const mailbox = notification.emailAddress?.toLowerCase()
+  if (!isWatchedMailbox(mailbox)) {
+    return Response.json({ ok: true, ignored: true })
+  }
+
+  // Fetch recent unread messages for only the mailbox that changed.
   try {
-    const messages = await getRecentMessages(5)
+    const messages = await getRecentMessages(mailbox, 5)
 
     for (const msg of messages) {
       // Check if we already have this notice
       const existing = await prisma.incomingNotice.findFirst({
-        where: { subject: msg.subject, from_email: msg.from },
+        where: {
+          subject: msg.subject,
+          from_email: msg.from,
+          source_mailbox: msg.mailbox,
+        },
       })
       if (existing) continue
 
@@ -47,6 +57,7 @@ export async function POST(request: Request) {
         data: {
           subject: msg.subject,
           from_email: msg.from,
+          source_mailbox: msg.mailbox,
           body: msg.snippet,
           category,
           forwarded_to: ['arvind@leaguesports.co', 'ak@leaguesports.co'],
@@ -56,7 +67,7 @@ export async function POST(request: Request) {
       await notifyAdmins(
         'NOTICE_RECEIVED',
         `New email: ${msg.subject}`,
-        `From: ${msg.from}`,
+        `To: ${msg.mailbox}\nFrom: ${msg.from}`,
         '/legal/compliance'
       )
 
@@ -64,6 +75,7 @@ export async function POST(request: Request) {
       try {
         await runAgent('email-inbox.invoice-detection', {
           emailBody: msg.snippet,
+          mailbox: msg.mailbox,
           from: msg.from,
           subject: msg.subject,
         })

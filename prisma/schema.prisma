@@ -1106,6 +1106,7 @@ model IncomingNotice {
   id              String         @id @default(uuid())
   subject         String
   from_email      String?
+  source_mailbox  String?
   body            String?
   category        NoticeCategory
   received_at     DateTime       @default(now())
@@ -1123,5 +1124,6 @@ model IncomingNotice {
 
   @@index([status, received_at])
   @@index([category])
+  @@index([source_mailbox])
   @@index([response_deadline])
 }

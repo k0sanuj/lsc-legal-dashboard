@@ -1,4 +1,4 @@
-import { watchInbox } from '@/lib/gmail'
+import { watchInboxes } from '@/lib/gmail'
 import { verifySessionToken } from '@/lib/session'
 
 export async function POST(request: Request) {
@@ -11,7 +11,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await watchInbox()
+    const result = await watchInboxes()
     return Response.json({ success: true, data: result })
   } catch (error) {
     console.error('Gmail watch setup error:', error)
