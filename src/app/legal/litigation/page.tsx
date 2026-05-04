@@ -226,12 +226,12 @@ export default async function LitigationPage({
             >
               Filter
             </button>
-            <a
+            <Link
               href="/legal/litigation"
               className="flex h-8 items-center rounded-md px-3 text-sm text-muted-foreground hover:text-foreground"
             >
               Clear
-            </a>
+            </Link>
           </form>
         </CardContent>
       </Card>

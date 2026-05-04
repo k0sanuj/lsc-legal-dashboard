@@ -1,9 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { requireSession } from "@/lib/auth"
-import {
-  LIFECYCLE_STATUS_LABELS,
-  LIFECYCLE_STATUS_COLORS,
-} from "@/lib/constants"
+import { LIFECYCLE_STATUS_LABELS } from "@/lib/constants"
 import { formatAED, formatDate, formatRelativeDate, daysUntil } from "@/lib/format"
 import { StatCard } from "@/components/legal/stat-card"
 import { LifecycleBadge } from "@/components/legal/lifecycle-badge"
@@ -50,107 +47,142 @@ const TRACKER_CATEGORY_LABELS: Record<string, string> = {
   OTHER: "Other",
 }
 
+async function loadCommandCenterData(now: Date, thirtyDaysFromNow: Date) {
+  const [
+    totalDocuments,
+    pendingSignatures,
+    expiringDocuments,
+    openIssues,
+    statusCounts,
+    signatureCounts,
+    upcomingExpirations,
+    recentEvents,
+    trackerByCategory,
+  ] = await Promise.all([
+    prisma.legalDocument.count(),
+    prisma.signatureRequest.count({
+      where: { status: { in: ["PENDING", "SENT"] } },
+    }),
+    prisma.legalDocument.count({
+      where: {
+        expiry_date: { gte: now, lte: thirtyDaysFromNow },
+        lifecycle_status: { notIn: ["EXPIRED", "TERMINATED"] },
+      },
+    }),
+    prisma.legalIssue.count({
+      where: { status: { in: ["OPEN", "IN_PROGRESS", "ESCALATED"] } },
+    }),
+    prisma.legalDocument.groupBy({
+      by: ["lifecycle_status"],
+      _count: { id: true },
+    }),
+    prisma.signatureRequest.groupBy({
+      by: ["status"],
+      _count: { id: true },
+    }),
+    prisma.legalDocument.findMany({
+      where: {
+        expiry_date: { gte: now },
+        lifecycle_status: { notIn: ["EXPIRED", "TERMINATED"] },
+      },
+      orderBy: { expiry_date: "asc" },
+      take: 5,
+      select: {
+        id: true,
+        title: true,
+        entity: true,
+        lifecycle_status: true,
+        expiry_date: true,
+        value: true,
+      },
+    }),
+    prisma.lifecycleEvent.findMany({
+      orderBy: { created_at: "desc" },
+      take: 10,
+      include: {
+        document: { select: { id: true, title: true } },
+      },
+    }),
+    prisma.trackerItem.groupBy({
+      by: ["category", "status"],
+      _count: { id: true },
+    }),
+  ])
+
+  const statusCountMap = Object.fromEntries(
+    statusCounts.map((s) => [s.lifecycle_status, s._count.id])
+  ) as Record<string, number>
+
+  const signatureCountMap = Object.fromEntries(
+    signatureCounts.map((s) => [s.status, s._count.id])
+  ) as Record<string, number>
+
+  const donutData = (Object.keys(LIFECYCLE_STATUS_LABELS) as LifecycleStatus[]).map(
+    (status) => ({
+      name: LIFECYCLE_STATUS_LABELS[status],
+      value: statusCountMap[status] ?? 0,
+      color: STATUS_CHART_COLORS[status] ?? "#64748b",
+    })
+  ).filter((d) => d.value > 0)
+
+  const trackerMap = new Map<string, { total: number; complete: number }>()
+  for (const row of trackerByCategory) {
+    const cat = row.category
+    if (!trackerMap.has(cat)) trackerMap.set(cat, { total: 0, complete: 0 })
+    const entry = trackerMap.get(cat)!
+    entry.total += row._count.id
+    if (row.status === "COMPLETE") entry.complete += row._count.id
+  }
+  const trackerData = Array.from(trackerMap.entries()).map(([cat, counts]) => ({
+    name: TRACKER_CATEGORY_LABELS[cat] ?? cat,
+    total: counts.total,
+    complete: counts.complete,
+  }))
+
+  return {
+    totalDocuments,
+    pendingSignatures,
+    expiringDocuments,
+    openIssues,
+    signatureCountMap,
+    upcomingExpirations,
+    recentEvents,
+    donutData,
+    trackerData,
+  }
+}
+
 export default async function CommandCenterPage() {
   await requireSession()
 
   const now = new Date()
   const thirtyDaysFromNow = new Date(now.getTime() + 30 * 86400000)
 
+  let data: Awaited<ReturnType<typeof loadCommandCenterData>> | null = null
+
   try {
-    const [
-      totalDocuments,
-      pendingSignatures,
-      expiringDocuments,
-      openIssues,
-      statusCounts,
-      signatureCounts,
-      upcomingExpirations,
-      recentEvents,
-      trackerByCategory,
-    ] = await Promise.all([
-      prisma.legalDocument.count(),
-      prisma.signatureRequest.count({
-        where: { status: { in: ["PENDING", "SENT"] } },
-      }),
-      prisma.legalDocument.count({
-        where: {
-          expiry_date: { gte: now, lte: thirtyDaysFromNow },
-          lifecycle_status: { notIn: ["EXPIRED", "TERMINATED"] },
-        },
-      }),
-      prisma.legalIssue.count({
-        where: { status: { in: ["OPEN", "IN_PROGRESS", "ESCALATED"] } },
-      }),
-      prisma.legalDocument.groupBy({
-        by: ["lifecycle_status"],
-        _count: { id: true },
-      }),
-      prisma.signatureRequest.groupBy({
-        by: ["status"],
-        _count: { id: true },
-      }),
-      prisma.legalDocument.findMany({
-        where: {
-          expiry_date: { gte: now },
-          lifecycle_status: { notIn: ["EXPIRED", "TERMINATED"] },
-        },
-        orderBy: { expiry_date: "asc" },
-        take: 5,
-        select: {
-          id: true,
-          title: true,
-          entity: true,
-          lifecycle_status: true,
-          expiry_date: true,
-          value: true,
-        },
-      }),
-      prisma.lifecycleEvent.findMany({
-        orderBy: { created_at: "desc" },
-        take: 10,
-        include: {
-          document: { select: { id: true, title: true } },
-        },
-      }),
-      prisma.trackerItem.groupBy({
-        by: ["category", "status"],
-        _count: { id: true },
-      }),
-    ])
+    data = await loadCommandCenterData(now, thirtyDaysFromNow)
+  } catch {
+    data = null
+  }
 
-    const statusCountMap = Object.fromEntries(
-      statusCounts.map((s) => [s.lifecycle_status, s._count.id])
-    ) as Record<string, number>
+  if (!data) {
+    return <CommandCenterLoadError />
+  }
 
-    const signatureCountMap = Object.fromEntries(
-      signatureCounts.map((s) => [s.status, s._count.id])
-    ) as Record<string, number>
+  const {
+    totalDocuments,
+    pendingSignatures,
+    expiringDocuments,
+    openIssues,
+    signatureCountMap,
+    upcomingExpirations,
+    recentEvents,
+    donutData,
+    trackerData,
+  } = data
 
-    // Chart data for status donut
-    const donutData = (Object.keys(LIFECYCLE_STATUS_LABELS) as LifecycleStatus[]).map(
-      (status) => ({
-        name: LIFECYCLE_STATUS_LABELS[status],
-        value: statusCountMap[status] ?? 0,
-        color: STATUS_CHART_COLORS[status] ?? "#64748b",
-      })
-    ).filter((d) => d.value > 0)
-
-    // Chart data for tracker bars
-    const trackerMap = new Map<string, { total: number; complete: number }>()
-    for (const row of trackerByCategory) {
-      const cat = row.category
-      if (!trackerMap.has(cat)) trackerMap.set(cat, { total: 0, complete: 0 })
-      const entry = trackerMap.get(cat)!
-      entry.total += row._count.id
-      if (row.status === "COMPLETE") entry.complete += row._count.id
-    }
-    const trackerData = Array.from(trackerMap.entries()).map(([cat, counts]) => ({
-      name: TRACKER_CATEGORY_LABELS[cat] ?? cat,
-      total: counts.total,
-      complete: counts.complete,
-    }))
-
-    return (
+  return (
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold">Command Center</h1>
@@ -322,29 +354,30 @@ export default async function CommandCenterPage() {
         </div>
       </div>
     )
-  } catch {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">Command Center</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Legal dashboard overview
-          </p>
-        </div>
+}
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard title="Total Documents" value={0} icon={FileText} />
-          <StatCard title="Pending Signatures" value={0} icon={PenTool} />
-          <StatCard title="Expiring (30d)" value={0} icon={Clock} />
-          <StatCard title="Open Issues" value={0} icon={AlertTriangle} />
-        </div>
-
-        <div className="rounded-xl border border-border/50 bg-card p-6">
-          <p className="text-sm text-muted-foreground">
-            Unable to load dashboard data. Please check the database connection.
-          </p>
-        </div>
+function CommandCenterLoadError() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Command Center</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Legal dashboard overview
+        </p>
       </div>
-    )
-  }
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard title="Total Documents" value={0} icon={FileText} />
+        <StatCard title="Pending Signatures" value={0} icon={PenTool} />
+        <StatCard title="Expiring (30d)" value={0} icon={Clock} />
+        <StatCard title="Open Issues" value={0} icon={AlertTriangle} />
+      </div>
+
+      <div className="rounded-xl border border-border/50 bg-card p-6">
+        <p className="text-sm text-muted-foreground">
+          Unable to load dashboard data. Please check the database connection.
+        </p>
+      </div>
+    </div>
+  )
 }

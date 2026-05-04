@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { Bell } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -29,6 +30,7 @@ interface NotificationBellProps {
 }
 
 export function NotificationBell({ userId }: NotificationBellProps) {
+  const router = useRouter()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [isPending, startTransition] = useTransition()
@@ -46,9 +48,16 @@ export function NotificationBell({ userId }: NotificationBellProps) {
   }
 
   useEffect(() => {
-    fetchNotifications()
-    const interval = setInterval(fetchNotifications, 30000)
-    return () => clearInterval(interval)
+    const initial = window.setTimeout(() => {
+      void fetchNotifications()
+    }, 0)
+    const interval = window.setInterval(() => {
+      void fetchNotifications()
+    }, 30000)
+    return () => {
+      window.clearTimeout(initial)
+      window.clearInterval(interval)
+    }
   }, [userId])
 
   function handleClick(notification: Notification) {
@@ -62,7 +71,7 @@ export function NotificationBell({ userId }: NotificationBellProps) {
       })
     }
     if (notification.link) {
-      window.location.href = notification.link
+      router.push(notification.link)
     }
   }
 

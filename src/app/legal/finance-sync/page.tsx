@@ -29,6 +29,22 @@ function formatDateTime(d: Date): string {
   })
 }
 
+function payloadString(payload: Record<string, unknown>, key: string): string {
+  const value = payload[key]
+  return typeof value === "string" ? value.toLowerCase() : ""
+}
+
+function isSmokeTestEvent(event: { entity_id: string; payload: unknown }): boolean {
+  const payload = (event.payload as Record<string, unknown>) ?? {}
+  return [
+    event.entity_id.toLowerCase(),
+    payloadString(payload, "legalExternalId"),
+    payloadString(payload, "contractName"),
+    payloadString(payload, "documentTitle"),
+    payloadString(payload, "source"),
+  ].some((value) => value.includes("codex-smoke") || value.includes("smoke test"))
+}
+
 export default async function FinanceSyncPage() {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN"])
 
@@ -45,6 +61,7 @@ export default async function FinanceSyncPage() {
     const p = e.payload as Record<string, unknown>
     return p?._abandoned === true
   }).length
+  const smokeTests = events.filter(isSmokeTestEvent).length
 
   return (
     <div className="space-y-6">
@@ -55,7 +72,7 @@ export default async function FinanceSyncPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <SummaryCard
           label="Total"
           value={total}
@@ -83,6 +100,13 @@ export default async function FinanceSyncPage() {
           icon={AlertCircle}
           colorClass="text-rose-400"
           bgClass="bg-rose-500/10"
+        />
+        <SummaryCard
+          label="Smoke tests"
+          value={smokeTests}
+          icon={Activity}
+          colorClass="text-violet-400"
+          bgClass="bg-violet-500/10"
         />
       </div>
 
@@ -123,6 +147,7 @@ export default async function FinanceSyncPage() {
                     | { count?: number; status?: number; error?: string | null }
                     | undefined
                   const isAbandoned = p._abandoned === true
+                  const isSmokeTest = isSmokeTestEvent(e)
                   return (
                     <TableRow key={e.id}>
                       <TableCell className="font-mono text-xs">
@@ -133,10 +158,25 @@ export default async function FinanceSyncPage() {
                         <Badge variant="outline" className="font-mono text-xs">
                           {e.event_type}
                         </Badge>
+                        {isSmokeTest && (
+                          <Badge
+                            variant="outline"
+                            className="ml-1 bg-violet-500/10 text-violet-300 border-violet-500/20"
+                          >
+                            Smoke
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         <div>{e.entity_type}</div>
-                        <div className="font-mono">{e.entity_id.slice(0, 8)}</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono">{e.entity_id.slice(0, 8)}</span>
+                          {isSmokeTest && (
+                            <span className="text-[10px] uppercase tracking-wide text-violet-300">
+                              test
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {e.processed ? (

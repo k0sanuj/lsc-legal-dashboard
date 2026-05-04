@@ -275,9 +275,40 @@ interface Particle {
   intent: string
 }
 
+function getAgentPosition(agentId: string, width: number, height: number): { x: number; y: number } {
+  const cx = width / 2
+  const cy = height / 2
+  const innerAgents = AGENTS.filter((a) => a.ring === 'inner')
+  const idx = innerAgents.findIndex((a) => a.id === agentId)
+
+  if (agentId === 'orchestrator') return { x: cx, y: cy }
+  if (agentId === 'platform') return { x: cx - 260, y: cy - 200 }
+  if (agentId === 'finance') return { x: cx + 260, y: cy - 200 }
+  if (agentId === 'gmail') return { x: cx - 260, y: cy + 180 }
+  if (agentId === 'cron') return { x: cx + 260, y: cy + 180 }
+
+  if (agentId.includes('.')) {
+    const parentId = agentId.split('.')[0]
+    const parent = getAgentPosition(parentId, width, height)
+    const parentAgent = AGENTS.find((a) => a.id === parentId)
+    const childIdx = parentAgent?.children?.indexOf(agentId) ?? 0
+    const childCount = parentAgent?.children?.length ?? 1
+    const spreadAngle = 0.4
+    const baseAngle = Math.atan2(parent.y - cy, parent.x - cx)
+    const angle = baseAngle + (childIdx - (childCount - 1) / 2) * spreadAngle
+    const dist = 80
+    return { x: parent.x + Math.cos(angle) * dist, y: parent.y + Math.sin(angle) * dist }
+  }
+
+  if (idx === -1) return { x: cx, y: cy }
+  const angle = (idx / innerAgents.length) * Math.PI * 2 - Math.PI / 2
+  const radius = Math.min(width, height) * 0.32
+  return { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius }
+}
+
 // ─── Main Component ─────────────────────────────────────────────────────────
 
-export function AgentArchitectureView({ messageFlows, activityLog, stats }: Props) {
+export function AgentArchitectureView({ activityLog, stats }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [activeScenario, setActiveScenario] = useState<number>(0)
@@ -286,41 +317,9 @@ export function AgentArchitectureView({ messageFlows, activityLog, stats }: Prop
   const [currentStep, setCurrentStep] = useState(-1)
   const [isPlaying, setIsPlaying] = useState(true)
   const [liveLog, setLiveLog] = useState<{ text: string; color: string; time: string }[]>([])
+  const [containerWidth, setContainerWidth] = useState(800)
   const animRef = useRef<number>(0)
   const timeoutsRef = useRef<NodeJS.Timeout[]>([])
-
-  // Agent positions on the radial layout
-  const getAgentPosition = useCallback((agentId: string, width: number, height: number): { x: number; y: number } => {
-    const cx = width / 2
-    const cy = height / 2
-    const innerAgents = AGENTS.filter((a) => a.ring === 'inner')
-    const idx = innerAgents.findIndex((a) => a.id === agentId)
-
-    if (agentId === 'orchestrator') return { x: cx, y: cy }
-    if (agentId === 'platform') return { x: cx - 260, y: cy - 200 }
-    if (agentId === 'finance') return { x: cx + 260, y: cy - 200 }
-    if (agentId === 'gmail') return { x: cx - 260, y: cy + 180 }
-    if (agentId === 'cron') return { x: cx + 260, y: cy + 180 }
-
-    // Sub-agents
-    if (agentId.includes('.')) {
-      const parentId = agentId.split('.')[0]
-      const parent = getAgentPosition(parentId, width, height)
-      const parentAgent = AGENTS.find((a) => a.id === parentId)
-      const childIdx = parentAgent?.children?.indexOf(agentId) ?? 0
-      const childCount = parentAgent?.children?.length ?? 1
-      const spreadAngle = 0.4
-      const baseAngle = Math.atan2(parent.y - cy, parent.x - cx)
-      const angle = baseAngle + (childIdx - (childCount - 1) / 2) * spreadAngle
-      const dist = 80
-      return { x: parent.x + Math.cos(angle) * dist, y: parent.y + Math.sin(angle) * dist }
-    }
-
-    if (idx === -1) return { x: cx, y: cy }
-    const angle = (idx / innerAgents.length) * Math.PI * 2 - Math.PI / 2
-    const radius = Math.min(width, height) * 0.32
-    return { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius }
-  }, [])
 
   // Run scenario animation
   const runScenario = useCallback((scenarioIdx: number) => {
@@ -387,20 +386,23 @@ export function AgentArchitectureView({ messageFlows, activityLog, stats }: Prop
       if (isPlaying) {
         const next = (scenarioIdx + 1) % SCENARIOS.length
         setActiveScenario(next)
-        runScenario(next)
       }
     }, totalDuration)
     timeoutsRef.current.push(nextT)
-  }, [getAgentPosition, isPlaying])
+  }, [isPlaying])
 
   useEffect(() => {
+    let startTimer: number | undefined
     if (isPlaying) {
-      runScenario(activeScenario)
+      startTimer = window.setTimeout(() => {
+        runScenario(activeScenario)
+      }, 0)
     }
     return () => {
+      if (startTimer) window.clearTimeout(startTimer)
       timeoutsRef.current.forEach(clearTimeout)
     }
-  }, [activeScenario, isPlaying])
+  }, [activeScenario, isPlaying, runScenario])
 
   // Animate particles
   useEffect(() => {
@@ -412,6 +414,21 @@ export function AgentArchitectureView({ messageFlows, activityLog, stats }: Prop
     }
     animRef.current = requestAnimationFrame(animate)
     return () => cancelAnimationFrame(animRef.current)
+  }, [])
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const updateWidth = () => setContainerWidth(container.clientWidth || 800)
+    const frame = requestAnimationFrame(updateWidth)
+    const observer = new ResizeObserver(updateWidth)
+    observer.observe(container)
+
+    return () => {
+      cancelAnimationFrame(frame)
+      observer.disconnect()
+    }
   }, [])
 
   // Draw canvas connections
@@ -520,7 +537,7 @@ export function AgentArchitectureView({ messageFlows, activityLog, stats }: Prop
       requestAnimationFrame(draw)
     }
     draw()
-  }, [particles, activeAgents, getAgentPosition])
+  }, [particles, activeAgents])
 
   const scenario = SCENARIOS[activeScenario]
 
@@ -616,7 +633,7 @@ export function AgentArchitectureView({ messageFlows, activityLog, stats }: Prop
             {/* Orchestrator node */}
             <AgentNodeView
               agent={AGENTS[0]}
-              position={getAgentPosition('orchestrator', containerRef.current?.clientWidth ?? 800, 500)}
+              position={getAgentPosition('orchestrator', containerWidth, 500)}
               isActive={activeAgents.has('orchestrator')}
               isCore
             />
@@ -626,7 +643,7 @@ export function AgentArchitectureView({ messageFlows, activityLog, stats }: Prop
               <AgentNodeView
                 key={agent.id}
                 agent={agent}
-                position={getAgentPosition(agent.id, containerRef.current?.clientWidth ?? 800, 500)}
+                position={getAgentPosition(agent.id, containerWidth, 500)}
                 isActive={activeAgents.has(agent.id)}
               />
             ))}
@@ -634,7 +651,7 @@ export function AgentArchitectureView({ messageFlows, activityLog, stats }: Prop
             {/* Sub-agent dots */}
             {AGENTS.filter((a) => a.ring === 'inner').flatMap((agent) =>
               (agent.children ?? []).map((childId) => {
-                const pos = getAgentPosition(childId, containerRef.current?.clientWidth ?? 800, 500)
+                const pos = getAgentPosition(childId, containerWidth, 500)
                 const isActive = activeAgents.has(childId)
                 return (
                   <div
@@ -658,7 +675,7 @@ export function AgentArchitectureView({ messageFlows, activityLog, stats }: Prop
               { id: 'gmail', label: 'Gmail / Pub/Sub', color: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
               { id: 'cron', label: 'Vercel Cron', color: 'bg-fuchsia-500/20 text-fuchsia-400 border-fuchsia-500/30' },
             ].map((ext) => {
-              const pos = getAgentPosition(ext.id, containerRef.current?.clientWidth ?? 800, 500)
+              const pos = getAgentPosition(ext.id, containerWidth, 500)
               return (
                 <div
                   key={ext.id}
