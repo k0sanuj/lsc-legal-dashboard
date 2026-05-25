@@ -9,12 +9,12 @@ Module 2 of the LSC Operations Platform. Full legal operations platform: complia
 
 Agents live in `src/lib/agents/`. Each extends `BaseAgent` and implements `run()`.
 
-- **Orchestrator** (`orchestrator.ts`): Routes messages between agents, runs agents on demand
+- **Orchestrator** (`orchestrator.ts`): Single registry for runnable agents and direct `runAgent()` triggers
 - **Compliance Agent**: 15-day scan of all entities/jurisdictions for compliance issues
 - **Agreement Analyzer**: AI-powered document categorization, clause extraction, file naming
 - **Invoice Detection**: Scans emails for invoices, verifies math, routes to finance
 - **Compliance Audit**: Full adversarial audit every 15 days, produces AuditReport records
-- Agents communicate via `AgentMessage` table, cross-dashboard via `CrossModuleEvent` table
+- `AgentMessage` is diagnostic/legacy plumbing only; production workflows use direct triggers. Cross-dashboard events use the durable `CrossModuleEvent` queue.
 
 ## Tech Stack
 - **Framework**: Next.js 16.2.4 (App Router, Server Components)

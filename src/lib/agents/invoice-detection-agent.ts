@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { BaseAgent } from './base-agent'
 import { LSC_LEGAL_CONTEXT } from './shared-context'
 import type { AgentResult } from './types'
-import { sendCrossDashboardMessage } from './orchestrator'
+import { emitFinanceEvent } from '@/lib/finance-webhook'
 
 interface InvoiceDetectionInput {
   emailBody: string
@@ -146,15 +146,13 @@ export class InvoiceDetectionAgent extends BaseAgent {
       entity: invoice.entity,
     })
 
-    // ── 5. If entity is TBR, send cross-dashboard message to finance ─────────
+    // ── 5. If entity is TBR, enqueue a durable Finance event ─────────────────
 
     if (entityValue === 'TBR') {
-      await sendCrossDashboardMessage(
-        'legal-dashboard',
+      const financeResult = await emitFinanceEvent(
         'invoice_detected',
-        'DetectedInvoice',
-        invoice.id,
         {
+          legalExternalId: invoice.id,
           vendor: invoice.vendor_name,
           amount: Number(invoice.amount),
           currency: invoice.currency,
@@ -162,18 +160,30 @@ export class InvoiceDetectionAgent extends BaseAgent {
           category: invoice.category,
           sourceEmail: from,
           sourceSubject: subject,
-        }
+        },
+        { entityType: 'DetectedInvoice', entityId: invoice.id }
       )
 
       await prisma.detectedInvoice.update({
         where: { id: invoice.id },
-        data: { routed_to_finance: true },
+        data: {
+          routed_to_finance: true,
+          notes: [
+            invoice.notes,
+            `Finance event ${financeResult.eventId}: ${financeResult.ok ? 'posted' : `queued (${financeResult.error ?? 'pending retry'})`}`,
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        },
       })
 
       await this.log('routed_to_finance', {
         invoiceId: invoice.id,
         entity: 'TBR',
-        reason: 'TBR entity auto-routes to finance dashboard',
+        financeEventId: financeResult.eventId,
+        posted: financeResult.ok,
+        error: financeResult.error ?? null,
+        reason: 'TBR entity auto-routes to finance dashboard through durable queue',
       })
     }
 

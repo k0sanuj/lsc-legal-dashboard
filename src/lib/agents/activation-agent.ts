@@ -59,27 +59,43 @@ export class ActivationAgent extends BaseAgent {
 
     await this.log('activation_started', { documentId })
 
-    // Check if the analyzer has already logged key dates for this doc —
-    // lets us skip a Claude call entirely on the common happy path.
-    const priorLog = await prisma.agentActivityLog.findFirst({
+    // Prefer the first-class structured analyzer output. Agent logs remain as
+    // a legacy fallback for older uploads that predate DocumentAnalysis.
+    const priorAnalysis = await prisma.documentAnalysis.findFirst({
       where: {
-        agent_id: 'agreement-analyzer',
-        action: 'analysis_complete',
-        details: {
-          path: ['documentId'],
-          equals: documentId,
-        },
+        document_id: documentId,
+        status: 'complete',
       },
       orderBy: { created_at: 'desc' },
     })
 
+    const priorLog = priorAnalysis
+      ? null
+      : await prisma.agentActivityLog.findFirst({
+          where: {
+            agent_id: 'agreement-analyzer',
+            action: 'analysis_complete',
+            details: {
+              path: ['documentId'],
+              equals: documentId,
+            },
+          },
+          orderBy: { created_at: 'desc' },
+        })
+
     let keyDates: KeyDate[] = []
     let usedAI = false
 
-    const priorDetails = priorLog?.details as { documentId?: string; keyDates?: KeyDate[] } | null
-    if (priorDetails?.documentId === documentId && Array.isArray(priorDetails.keyDates)) {
-      keyDates = priorDetails.keyDates
-    } else if (doc.notes?.trim()) {
+    if (Array.isArray(priorAnalysis?.key_dates)) {
+      keyDates = priorAnalysis.key_dates as unknown as KeyDate[]
+    } else {
+      const priorDetails = priorLog?.details as { documentId?: string; keyDates?: KeyDate[] } | null
+      if (priorDetails?.documentId === documentId && Array.isArray(priorDetails.keyDates)) {
+        keyDates = priorDetails.keyDates
+      }
+    }
+
+    if (keyDates.length === 0 && doc.notes?.trim()) {
       usedAI = true
       try {
         const raw = await this.callAI({

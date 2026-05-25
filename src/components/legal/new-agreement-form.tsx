@@ -4,7 +4,6 @@ import { useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
 import {
   Sheet,
   SheetContent,
@@ -54,10 +53,16 @@ export function NewAgreementForm() {
   function handleSubmit(formData: FormData) {
     setError(null)
     startTransition(async () => {
+      const file = formData.get("file")
+      const hasFile = file instanceof File && file.size > 0
       const result = await createDocument(formData)
       if (result.success) {
         setOpen(false)
-        router.refresh()
+        router.push(
+          hasFile
+            ? `/legal/documents/${result.documentId}?analysis=open`
+            : `/legal/documents/${result.documentId}`
+        )
       } else {
         setError(result.error ?? "Failed to create agreement")
       }

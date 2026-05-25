@@ -1,7 +1,9 @@
 # Authentication Pattern — LSC Legal Dashboard
 
 ## Overview
-Cookie-based HMAC-signed session authentication. Matches the pattern used in the finance dashboard (`/Users/anujsingh/lsc-finance-dashboard`) for future unification.
+Passwordless magic-link authentication with cookie-based HMAC-signed sessions.
+Only emails in `AUTH_ALLOWED_EMAILS` can request or redeem links, and existing
+cookies are rejected if their email is removed from the allowlist.
 
 ## Files
 
@@ -9,24 +11,50 @@ Cookie-based HMAC-signed session authentication. Matches the pattern used in the
 - Cookie name: `lsc_legal_session`
 - HMAC signing using `AUTH_SESSION_SECRET` env var
 - Token payload: `{ userId: string, role: UserRole, email: string, exp: number }`
-- Expiry: 7 days
+- Expiry: 90 days
 - Functions:
   - `createSessionToken(payload)` → signed string
   - `verifySessionToken(token)` → payload or null
   - `setSessionCookie(payload)` → sets HTTP-only cookie
   - `clearSessionCookie()` → clears cookie
-- Use `crypto.createHmac('sha256', secret)` for signing
+- Uses Web Crypto HMAC SHA-256 for edge-compatible signing
 - Token format: `base64(payload).base64(signature)`
+- `verifySessionToken()` also checks `AUTH_ALLOWED_EMAILS`, so removing an email
+  from the allowlist invalidates its existing session on the next request.
 
 ### `src/lib/auth.ts`
 - Uses Prisma client to query `AppUser` table
 - Functions:
-  - `authenticateWithPassword(email, password)` → creates session, logs event, returns user
+  - `authenticateWithPassword(email, password)` → legacy-compatible helper; still allowlist-gated, but no user-facing password form should call it
   - `requireSession()` → reads cookie, verifies, returns session payload; redirects to `/login` if invalid
   - `requireRole(allowedRoles: UserRole[])` → calls requireSession, checks role, throws 403 if unauthorized
   - `getOptionalSession()` → returns session or null (no redirect)
   - `logoutCurrentUser()` → clears cookie, logs event
 - Password hashing: `bcryptjs` with salt rounds 12
+
+### `src/lib/auth-allowlist.ts`
+- Source of truth for strict login allowlisting.
+- Production should set `AUTH_ALLOWED_EMAILS` as a comma-separated list.
+- Code fallback currently permits only:
+  - `anuj@leaguesportsco.com`
+  - `ak@leaguesportsco.com`
+  - `adi@leaguesportsco.com`
+
+### `src/lib/magic-link.ts`
+- Generates one-time 32-byte tokens and stores only SHA-256 token hashes in `AuthMagicLinkToken`.
+- Default token TTL: 15 minutes (`AUTH_MAGIC_LINK_TTL_MINUTES`, 5-60 minute bounds).
+- Revokes previous unused links for the same user before issuing a new one.
+- Sends via `src/lib/email.ts`; production requires `RESEND_API_KEY` and `AUTH_EMAIL_FROM`.
+- Local development without `RESEND_API_KEY` uses debug delivery and exposes a local debug link in the login UI.
+
+### `src/app/api/auth/magic/route.ts`
+- Public GET route used by emailed links.
+- Verifies the token hash, expiry, one-time status, user active state, and allowlist membership.
+- Marks the token consumed, logs `magic_link_login`, sets the 90-day session cookie, and redirects to `/legal`.
+
+### `src/app/api/auth/logout/route.ts`
+- POST route used by the sidebar sign-out form.
+- Clears the session cookie and redirects to `/login`.
 
 ### `src/lib/password.ts`
 - `hashPassword(plain)` → bcrypt hash
@@ -59,12 +87,12 @@ Entity-level scoping:
 - `TEAM_MEMBER`: can only view own employment docs, sign assigned docs, submit issues
 - `EXTERNAL_AUDITOR`: read-only access to document repository, time-limited sessions
 
-### `src/middleware.ts`
+### `src/proxy.ts`
 ```typescript
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySessionToken } from '@/lib/session'
 
-const PUBLIC_PATHS = ['/login']
+const PUBLIC_PATHS = ['/login', '/api/auth/magic']
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -92,28 +120,21 @@ export const config = {
 ```
 
 ### `src/app/login/page.tsx`
-- Simple dark-themed login form
-- Email + password fields
-- Submit calls server action `authenticateWithPassword`
-- Error display for invalid credentials
-- Redirect to `/legal` on success
+- Simple dark-themed passwordless login page.
+- Email-only form lives in `src/app/login/magic-link-login-form.tsx`.
+- Submit calls `requestMagicLinkAction`.
+- The response is generic for unapproved or missing accounts to avoid account enumeration.
+- Invalid/expired/reused links redirect to `/login?error=invalid-link`.
 
 ### `src/app/login/actions.ts`
 ```typescript
 'use server'
-import { authenticateWithPassword } from '@/lib/auth'
-import { redirect } from 'next/navigation'
+import { getRequestContext, requestMagicLink } from '@/lib/magic-link'
 
-export async function loginAction(formData: FormData) {
+export async function requestMagicLinkAction(formData: FormData) {
   const email = formData.get('email') as string
-  const password = formData.get('password') as string
-
-  const result = await authenticateWithPassword(email, password)
-  if (!result.success) {
-    return { error: result.error }
-  }
-
-  redirect('/legal')
+  const context = await getRequestContext()
+  return requestMagicLink(email, context)
 }
 ```
 
@@ -130,4 +151,4 @@ export async function loginAction(formData: FormData) {
 | Commercial | commercial@leaguesports.co | COMMERCIAL_OFFICER | Own contracts only |
 | Team Member | team@leaguesports.co | TEAM_MEMBER | Own docs, submit issues |
 
-Default dev password for all: `lsc2026!` (only in seed, never in production)
+Default dev passwords are legacy seed-only. User-facing login is magic-link only.

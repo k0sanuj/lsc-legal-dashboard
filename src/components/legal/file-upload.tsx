@@ -2,8 +2,9 @@
 
 import { useRef, useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
-import { Upload, Loader2, CheckCircle2 } from "lucide-react"
+import { Upload, Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { useRouter } from "next/navigation"
 
 interface FileUploadProps {
   action: (formData: FormData) => Promise<{ success: boolean; error?: string }>
@@ -14,6 +15,7 @@ interface FileUploadProps {
   extraFields?: Record<string, string>
   label?: string
   accept?: string
+  openAnalysisOnSuccess?: boolean
 }
 
 export function FileUpload({
@@ -23,7 +25,9 @@ export function FileUpload({
   extraFields,
   label = "Upload File",
   accept = ".pdf,.doc,.docx,.png,.jpg,.jpeg",
+  openAnalysisOnSuccess = false,
 }: FileUploadProps) {
+  const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
   const [isPending, startTransition] = useTransition()
   const [fileName, setFileName] = useState<string | null>(null)
@@ -53,6 +57,12 @@ export function FileUpload({
       if (result.success) {
         toast.success("File uploaded successfully")
         setFileName(null)
+        if (openAnalysisOnSuccess && entityIdField === "documentId") {
+          router.push(`/legal/documents/${entityId}?analysis=open`)
+          router.refresh()
+        } else {
+          router.refresh()
+        }
       } else {
         toast.error(result.error ?? "Upload failed")
       }

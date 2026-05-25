@@ -3,24 +3,107 @@
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
+import { uploadToS3, getS3Key } from '@/lib/s3'
+import { extractTextFromFile } from '@/lib/extract-text'
+import { runAgent } from '@/lib/agents/orchestrator'
 import type { Entity, Jurisdiction, KycDocStatus } from '@/generated/prisma/client'
 
-export async function createKycDocument(formData: FormData) {
-  const session = await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
-  await prisma.kycDocument.create({
+export async function createKycDocument(formData: FormData) {
+  await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+
+  const file = formData.get('file') as File | null
+  const entity = formData.get('entity') as Entity
+  const jurisdiction = formData.get('jurisdiction') as Jurisdiction
+  const documentType = formData.get('document_type') as string
+  const documentName = formData.get('document_name') as string
+  const hasFile = file && typeof file === 'object' && file.size > 0
+
+  if (hasFile && file.size > MAX_UPLOAD_BYTES) {
+    return { success: false, error: 'File too large (max 25MB).' }
+  }
+
+  let fileUrl: string | null = null
+  let extractedText = ''
+  if (hasFile) {
+    const key = getS3Key(entity, 'kyc', file.name)
+    fileUrl = await uploadToS3(file, key)
+    extractedText = await extractTextFromFile(file)
+  }
+
+  const document = await prisma.kycDocument.create({
     data: {
-      entity: formData.get('entity') as Entity,
-      jurisdiction: formData.get('jurisdiction') as Jurisdiction,
-      document_type: formData.get('document_type') as string,
-      document_name: formData.get('document_name') as string,
+      entity,
+      jurisdiction,
+      document_type: documentType,
+      document_name: documentName,
+      file_url: fileUrl,
       status: 'COLLECTED',
       expiry_date: formData.get('expiry_date') ? new Date(formData.get('expiry_date') as string) : null,
     },
   })
 
+  const content = extractedText.trim() || documentName
+  if (hasFile && content.trim()) {
+    after(async () => {
+      try {
+        await runAgent('agreement-analyzer', {
+          kycDocumentId: document.id,
+          sourceType: 'kyc_document',
+          sourceLabel: file.name,
+          content,
+        })
+      } catch (error) {
+        console.error('KYC document analysis failed (non-blocking):', error)
+      }
+    })
+  }
+
   revalidatePath('/legal/kyc')
-  return { success: true }
+  return { success: true, documentId: document.id, hasFile: Boolean(fileUrl) }
+}
+
+export async function uploadKycDocumentFile(formData: FormData) {
+  await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+
+  const file = formData.get('file') as File
+  const documentId = formData.get('kycDocumentId') as string
+  const entity = (formData.get('entity') as string) || 'LSC'
+
+  if (!file || !documentId) {
+    return { success: false, error: 'File and KYC document ID required.' }
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return { success: false, error: 'File too large (max 25MB).' }
+  }
+
+  const key = getS3Key(entity, 'kyc', file.name)
+  const url = await uploadToS3(file, key)
+  const extractedText = await extractTextFromFile(file)
+
+  const document = await prisma.kycDocument.update({
+    where: { id: documentId },
+    data: { file_url: url },
+  })
+
+  const content = extractedText.trim() || document.document_name
+  after(async () => {
+    try {
+      await runAgent('agreement-analyzer', {
+        kycDocumentId: document.id,
+        sourceType: 'kyc_document',
+        sourceLabel: file.name,
+        content,
+      })
+    } catch (error) {
+      console.error('KYC document analysis failed (non-blocking):', error)
+    }
+  })
+
+  revalidatePath('/legal/kyc')
+  return { success: true, data: { url } }
 }
 
 export async function updateKycStatus(docId: string, status: KycDocStatus) {

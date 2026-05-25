@@ -14,7 +14,7 @@ interface ChecklistResult {
   summary: string
 }
 
-const TASK_INSTRUCTIONS = `Task: Verify a contract is ready for signature. Check for common blockers before the document is sent to HelloSign.
+const TASK_INSTRUCTIONS = `Task: Verify a contract is ready for signature. Check for common blockers before the document is sent to OpenSign.
 
 Evaluate:
 1. Party names — are all signatories fully named with legal suffixes (LLC, FZCO, etc.)?

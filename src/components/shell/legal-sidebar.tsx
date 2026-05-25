@@ -35,6 +35,7 @@ import {
   FileSignature,
   Settings2,
   Webhook,
+  Activity,
 } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
@@ -71,6 +72,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   FileSignature,
   Settings2,
   Webhook,
+  Activity,
 }
 
 interface ChecklistItem {

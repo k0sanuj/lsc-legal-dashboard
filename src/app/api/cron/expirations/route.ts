@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { notifyAdmins } from '@/actions/notifications'
+import { notifyAdmins, notifyAdminsOnce } from '@/actions/notifications'
 import { isAuthorizedCronRequest } from '@/lib/cron-auth'
 
 export async function GET(request: Request) {
@@ -51,12 +51,14 @@ export async function GET(request: Request) {
   }
 
   // Notify admins if any documents are expiring
+  let expirationNotificationsCreated = 0
   if (expiringDocs.length > 0) {
-    await notifyAdmins(
+    expirationNotificationsCreated = await notifyAdminsOnce(
       'expiration_warning',
       'Documents Expiring Soon',
       `${expiringDocs.length} document${expiringDocs.length === 1 ? '' : 's'} expiring within 30 days.`,
-      '/legal/expirations'
+      '/legal/expirations',
+      new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
     )
   }
 
@@ -90,6 +92,7 @@ export async function GET(request: Request) {
     expiringDocuments: expiringDocs.length,
     transitioned,
     overdueDeadlines: overdueDeadlines.length,
+    expirationNotificationsCreated,
     timestamp: now.toISOString(),
   })
 }

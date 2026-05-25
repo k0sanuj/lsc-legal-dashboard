@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Plus, Loader2 } from 'lucide-react'
+import { DocumentAnalysisSummaryDrawer } from '@/components/legal/document-analysis-summary'
 
 const ENTITIES = [
   { value: 'LSC', label: 'LSC' },
@@ -44,6 +45,7 @@ export function CreateKycForm() {
   const [entity, setEntity] = useState('LSC')
   const [jurisdiction, setJurisdiction] = useState('UAE')
   const [isPending, startTransition] = useTransition()
+  const [analysisTargetId, setAnalysisTargetId] = useState<string | null>(null)
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -59,11 +61,15 @@ export function CreateKycForm() {
         setEntity('LSC')
         setJurisdiction('UAE')
         setOpen(false)
+        if (result.hasFile && result.documentId) {
+          setAnalysisTargetId(result.documentId)
+        }
       }
     })
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button size="sm" variant="outline" />}>
         <Plus className="h-3.5 w-3.5 mr-1" />
@@ -117,6 +123,13 @@ export function CreateKycForm() {
             <label className="text-xs text-muted-foreground">Expiry Date</label>
             <Input name="expiry_date" type="date" />
           </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">File</label>
+            <Input name="file" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt,.md" />
+            <p className="text-xs text-muted-foreground">
+              Optional. Uploaded files are analyzed for key fields, dates, gaps, and next steps.
+            </p>
+          </div>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
               Cancel
@@ -129,5 +142,14 @@ export function CreateKycForm() {
         </form>
       </DialogContent>
     </Dialog>
+    {analysisTargetId ? (
+      <DocumentAnalysisSummaryDrawer
+        documentId={analysisTargetId}
+        targetType="kyc"
+        autoOpen
+        showTrigger={false}
+      />
+    ) : null}
+    </>
   )
 }

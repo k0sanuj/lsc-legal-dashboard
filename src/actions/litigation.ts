@@ -3,8 +3,13 @@
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
-import { sendCrossDashboardMessage } from '@/lib/agents/orchestrator'
+import { after } from 'next/server'
+import { runAgent, sendCrossDashboardMessage } from '@/lib/agents/orchestrator'
+import { uploadToS3, getS3Key } from '@/lib/s3'
+import { extractTextFromFile } from '@/lib/extract-text'
 import type { Entity, Jurisdiction, LitigationStatus } from '@/generated/prisma/client'
+
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 export async function createLitigationCase(formData: FormData) {
   const session = await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
@@ -47,7 +52,7 @@ export async function createLitigationCase(formData: FormData) {
 export async function updateLitigationStatus(caseId: string, newStatus: LitigationStatus) {
   await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
 
-  const caseRecord = await prisma.litigationCase.update({
+  await prisma.litigationCase.update({
     where: { id: caseId },
     data: { status: newStatus },
   })
@@ -82,4 +87,69 @@ export async function addLitigationEvent(formData: FormData) {
   const caseId = formData.get('case_id') as string
   revalidatePath(`/legal/litigation/${caseId}`)
   return { success: true }
+}
+
+export async function uploadLitigationDocument(formData: FormData) {
+  const session = await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+
+  const caseId = formData.get('caseId') as string
+  const file = formData.get('file') as File
+  const title = ((formData.get('title') as string) || file?.name || '').trim()
+  const docType = ((formData.get('docType') as string) || 'case_document').trim()
+
+  if (!caseId || !file || !title) {
+    return { success: false, error: 'Case, title, and file are required.' }
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return { success: false, error: 'File too large (max 25MB).' }
+  }
+
+  const caseRecord = await prisma.litigationCase.findUnique({
+    where: { id: caseId },
+    select: { entity: true, case_name: true },
+  })
+  if (!caseRecord) {
+    return { success: false, error: 'Litigation case not found.' }
+  }
+
+  const key = getS3Key(caseRecord.entity, 'litigation', file.name)
+  const fileUrl = await uploadToS3(file, key)
+  const extractedText = await extractTextFromFile(file)
+
+  const document = await prisma.litigationDocument.create({
+    data: {
+      case_id: caseId,
+      title,
+      doc_type: docType,
+      file_url: fileUrl,
+      uploaded_by: session.userId,
+    },
+  })
+
+  await prisma.litigationEvent.create({
+    data: {
+      case_id: caseId,
+      event_type: 'document_upload',
+      title: `Document uploaded: ${title}`,
+      event_date: new Date(),
+      created_by: session.userId,
+    },
+  })
+
+  const content = extractedText.trim() || `${caseRecord.case_name}\n${title}`
+  after(async () => {
+    try {
+      await runAgent('agreement-analyzer', {
+        litigationDocumentId: document.id,
+        sourceType: 'litigation_document',
+        sourceLabel: file.name,
+        content,
+      })
+    } catch (error) {
+      console.error('Litigation document analysis failed (non-blocking):', error)
+    }
+  })
+
+  revalidatePath(`/legal/litigation/${caseId}`)
+  return { success: true, documentId: document.id, hasFile: true }
 }

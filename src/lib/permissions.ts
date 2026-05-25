@@ -68,6 +68,8 @@ export const PAGE_PERMISSIONS: Record<string, UserRole[]> = {
   "/legal/agreements": ALL_ROLES,
   "/legal/clickwrap": ADMIN_ROLES,
   "/legal/audit-reports": LEGAL_WRITE_ROLES,
+  "/legal/finance-sync": ADMIN_ROLES,
+  "/legal/ops-monitor": ADMIN_ROLES,
   "/legal/agent-architecture": ADMIN_ROLES,
   "/legal/file-naming": ADMIN_ROLES,
   "/legal/table-config": LEGAL_WRITE_ROLES,
@@ -128,6 +130,7 @@ export const NAV_ITEMS: NavItem[] = [
 
   // Integrations
   { label: "Finance Sync", href: "/legal/finance-sync", icon: "Webhook", group: "Integrations" },
+  { label: "Ops Monitor", href: "/legal/ops-monitor", icon: "Activity", group: "Integrations" },
 
   // Operations
   { label: "Policies", href: "/legal/policies", icon: "BookOpen", group: "Operations" },

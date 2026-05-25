@@ -147,7 +147,7 @@ export async function createDocument(formData: FormData) {
     })
 
     // 3. Initial version + lifecycle event
-    await prisma.documentVersion.create({
+    const initialVersion = await prisma.documentVersion.create({
       data: {
         document_id: document.id,
         version_number: 1,
@@ -174,6 +174,9 @@ export async function createDocument(formData: FormData) {
         try {
           await runAgent("agreement-analyzer", {
             documentId: document.id,
+            versionId: initialVersion.id,
+            sourceType: "legal_document",
+            sourceLabel: file.name,
             content: extractedText,
           })
         } catch (err) {

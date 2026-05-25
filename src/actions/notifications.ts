@@ -2,7 +2,6 @@
 
 import { requireSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { revalidatePath } from 'next/cache'
 
 export async function getNotifications(userId: string) {
   return prisma.notification.findMany({
@@ -55,4 +54,48 @@ export async function notifyAdmins(
       link,
     })),
   })
+}
+
+export async function notifyAdminsOnce(
+  type: string,
+  title: string,
+  message: string,
+  link: string | undefined,
+  since: Date
+) {
+  const admins = await prisma.appUser.findMany({
+    where: {
+      role: { in: ['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'] },
+      is_active: true,
+    },
+    select: { id: true },
+  })
+
+  let created = 0
+  for (const admin of admins) {
+    const existing = await prisma.notification.findFirst({
+      where: {
+        user_id: admin.id,
+        type,
+        title,
+        link,
+        created_at: { gte: since },
+      },
+      select: { id: true },
+    })
+    if (existing) continue
+
+    await prisma.notification.create({
+      data: {
+        user_id: admin.id,
+        type,
+        title,
+        message,
+        link,
+      },
+    })
+    created++
+  }
+
+  return created
 }

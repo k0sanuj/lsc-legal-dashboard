@@ -23,6 +23,7 @@ export type FinanceEventType =
   | "tranche.updated"
   | "share_grant.created"
   | "share_grant.updated"
+  | "invoice_detected"
 
 export type FinanceEnvelope = {
   eventId: string

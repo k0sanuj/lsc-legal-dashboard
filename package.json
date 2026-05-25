@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "prisma generate && NODE_OPTIONS=--max-old-space-size=4096 next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "release:gate": "node scripts/release-gate.mjs",
+    "auth:provision-passwordless": "node scripts/provision-passwordless-access.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.0",

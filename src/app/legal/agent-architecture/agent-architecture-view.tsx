@@ -44,14 +44,13 @@ const ICON_MAP = {
 
 const AGENTS: AgentNode[] = [
   {
-    id: 'orchestrator',
-    name: 'Central Legal Orchestrator',
-    shortName: 'Orchestrator',
+    id: 'agent-runtime',
+    name: 'Agent Runtime',
+    shortName: 'Runtime',
     icon: 'Bot',
     color: 'from-violet-500 to-purple-600',
     ring: 'core',
-    children: ['compliance', 'agreement-analyzer', 'email-inbox', 'litigation', 'kyc', 'compliance-audit', 'data-compliance-officer'],
-    description: 'Routes messages, resolves conflicts, maintains global state graph',
+    description: 'Direct runAgent triggers, cron routes, and webhook entrypoints',
   },
   {
     id: 'compliance',
@@ -60,7 +59,6 @@ const AGENTS: AgentNode[] = [
     icon: 'ShieldCheck',
     color: 'from-emerald-500 to-green-600',
     ring: 'inner',
-    children: ['compliance.jurisdiction', 'compliance.data-protection', 'compliance.renewal-tracker'],
     description: 'Per-entity compliance scanning every 15 days',
   },
   {
@@ -70,38 +68,16 @@ const AGENTS: AgentNode[] = [
     icon: 'FileText',
     color: 'from-blue-500 to-cyan-600',
     ring: 'inner',
-    children: ['agreement-analyzer.categorization', 'agreement-analyzer.clause-extraction', 'agreement-analyzer.clickwrap-tracker'],
     description: 'AI-powered document categorization and clause extraction',
   },
   {
-    id: 'email-inbox',
-    name: 'Email / Inbox Agent',
-    shortName: 'Email Intel',
+    id: 'email-inbox.invoice-detection',
+    name: 'Invoice Detection Agent',
+    shortName: 'Invoices',
     icon: 'Mail',
     color: 'from-amber-500 to-orange-600',
     ring: 'inner',
-    children: ['email-inbox.invoice-detection', 'email-inbox.notice-detection', 'email-inbox.deadline-extraction'],
-    description: 'Monitors legal@leaguesportsco.com, detects invoices and notices',
-  },
-  {
-    id: 'litigation',
-    name: 'Litigation Agent',
-    shortName: 'Litigation',
-    icon: 'Gavel',
-    color: 'from-rose-500 to-red-600',
-    ring: 'inner',
-    children: ['litigation.case-tracker', 'litigation.finance-liaison'],
-    description: 'Case tracking and financial exposure to Finance Dashboard',
-  },
-  {
-    id: 'kyc',
-    name: 'KYC Agent',
-    shortName: 'KYC',
-    icon: 'UserCheck',
-    color: 'from-sky-500 to-blue-600',
-    ring: 'inner',
-    children: ['kyc.admin-accounts', 'kyc.vendor-verification'],
-    description: 'KYC document verification and admin account tracking',
+    description: 'Scans Gmail webhook payloads for invoices and queues Finance events',
   },
   {
     id: 'compliance-audit',
@@ -110,18 +86,25 @@ const AGENTS: AgentNode[] = [
     icon: 'ClipboardCheck',
     color: 'from-fuchsia-500 to-pink-600',
     ring: 'inner',
-    children: ['compliance-audit.entity-scanner', 'compliance-audit.office-tracker', 'compliance-audit.email-checker'],
     description: 'Adversarial 15-day full compliance audit',
   },
   {
-    id: 'data-compliance-officer',
-    name: 'Data Compliance Officer',
-    shortName: 'Data Officer',
+    id: 'pre-signature-checklist',
+    name: 'Pre-Signature Checklist Agent',
+    shortName: 'Pre-Sign',
+    icon: 'UserCheck',
+    color: 'from-sky-500 to-blue-600',
+    ring: 'inner',
+    description: 'Checks document readiness before e-signature',
+  },
+  {
+    id: 'activation',
+    name: 'Activation Agent',
+    shortName: 'Activation',
     icon: 'Lock',
     color: 'from-teal-500 to-emerald-600',
     ring: 'inner',
-    children: ['data-compliance-officer.gdpr', 'data-compliance-officer.jurisdiction-policy', 'data-compliance-officer.officer-assignment'],
-    description: 'GDPR/PDPL compliance, DPO assignments, health scores',
+    description: 'Creates deadlines from signed and activated documents',
   },
 ]
 
@@ -147,83 +130,47 @@ const SCENARIOS: Scenario[] = [
   {
     name: 'Document Upload',
     trigger: 'User uploads a new agreement',
-    description: 'When a document is uploaded, the Agreement Analyzer auto-categorizes it, extracts clauses, checks compliance implications, and notifies finance if it has cost impact.',
+    description: 'When a document is uploaded, the Agreement Analyzer extracts structured analysis and the lifecycle sync can notify Finance.',
     color: 'text-blue-400',
     steps: [
-      { from: 'platform', to: 'orchestrator', label: 'New document uploaded', intent: 'document_uploaded', delay: 0 },
-      { from: 'orchestrator', to: 'agreement-analyzer', label: 'Analyze document', intent: 'analyze_document', delay: 800 },
-      { from: 'agreement-analyzer', to: 'agreement-analyzer.categorization', label: 'Auto-categorize', intent: 'categorize', delay: 1400 },
-      { from: 'agreement-analyzer', to: 'agreement-analyzer.clause-extraction', label: 'Extract clauses', intent: 'extract_clauses', delay: 1600 },
-      { from: 'agreement-analyzer', to: 'orchestrator', label: 'Analysis complete', intent: 'analysis_result', delay: 2800 },
-      { from: 'orchestrator', to: 'compliance', label: 'Check compliance impact', intent: 'compliance_check', delay: 3400 },
-      { from: 'compliance', to: 'compliance.jurisdiction', label: 'Jurisdiction check', intent: 'jurisdiction_check', delay: 4000 },
-      { from: 'compliance', to: 'orchestrator', label: 'Compliance OK', intent: 'compliance_result', delay: 4800 },
-      { from: 'orchestrator', to: 'finance', label: 'Financial impact update', intent: 'finance_cost_update', delay: 5400 },
+      { from: 'platform', to: 'agreement-analyzer', label: 'Analyze uploaded file', intent: 'runAgent', delay: 0 },
+      { from: 'agreement-analyzer', to: 'platform', label: 'Persist DocumentAnalysis', intent: 'analysis_complete', delay: 900 },
+      { from: 'platform', to: 'finance', label: 'Queue lifecycle Finance event', intent: 'emitFinanceEvent', delay: 1700 },
     ],
   },
   {
     name: 'Email Invoice',
     trigger: 'Invoice email arrives at legal@leaguesportsco.com',
-    description: 'Incoming email is scanned, invoice detected, math verified, tagged, and routed — TBR invoices go directly to the Finance Dashboard.',
+    description: 'Incoming Gmail Pub/Sub events run invoice detection. TBR invoices are queued through the durable Finance webhook path.',
     color: 'text-amber-400',
     steps: [
-      { from: 'gmail', to: 'email-inbox', label: 'New email received', intent: 'email_received', delay: 0 },
-      { from: 'email-inbox', to: 'email-inbox.invoice-detection', label: 'Scan for invoice', intent: 'detect_invoice', delay: 600 },
-      { from: 'email-inbox.invoice-detection', to: 'email-inbox', label: 'Invoice detected!', intent: 'invoice_found', delay: 1400 },
-      { from: 'email-inbox', to: 'orchestrator', label: 'Invoice verified', intent: 'invoice_verified', delay: 2000 },
-      { from: 'orchestrator', to: 'kyc', label: 'Verify vendor KYC', intent: 'vendor_check', delay: 2600 },
-      { from: 'kyc', to: 'kyc.vendor-verification', label: 'Check vendor records', intent: 'verify_vendor', delay: 3200 },
-      { from: 'kyc', to: 'orchestrator', label: 'Vendor verified', intent: 'vendor_result', delay: 3800 },
-      { from: 'orchestrator', to: 'finance', label: 'Route TBR invoice to Finance', intent: 'route_to_finance', delay: 4400 },
+      { from: 'gmail', to: 'email-inbox.invoice-detection', label: 'Scan recent mailbox messages', intent: 'detect_invoice', delay: 0 },
+      { from: 'email-inbox.invoice-detection', to: 'platform', label: 'Create DetectedInvoice or no-invoice log', intent: 'invoice_result', delay: 900 },
+      { from: 'email-inbox.invoice-detection', to: 'finance', label: 'Queue TBR invoice', intent: 'invoice_detected', delay: 1700 },
     ],
   },
   {
-    name: 'Legal Notice',
-    trigger: 'Legal notice received from regulator',
-    description: 'A legal notice triggers deadline extraction, jurisdiction lookup, compliance officer assignment, and escalation tracking.',
-    color: 'text-rose-400',
+    name: 'Signature Readiness',
+    trigger: 'Document moves to awaiting signature',
+    description: 'The pre-signature checklist checks blockers before signing. Activation later creates deadlines from the final analysis.',
+    color: 'text-sky-400',
     steps: [
-      { from: 'gmail', to: 'email-inbox', label: 'Notice email detected', intent: 'email_received', delay: 0 },
-      { from: 'email-inbox', to: 'email-inbox.notice-detection', label: 'Classify as legal notice', intent: 'detect_notice', delay: 700 },
-      { from: 'email-inbox', to: 'email-inbox.deadline-extraction', label: 'Extract deadlines', intent: 'extract_deadline', delay: 900 },
-      { from: 'email-inbox', to: 'orchestrator', label: 'Notice + deadline', intent: 'notice_detected', delay: 1600 },
-      { from: 'orchestrator', to: 'compliance', label: 'Assign to compliance', intent: 'assign_notice', delay: 2200 },
-      { from: 'compliance', to: 'compliance.jurisdiction', label: 'Jurisdiction response rules', intent: 'jurisdiction_deadline', delay: 2800 },
-      { from: 'compliance', to: 'data-compliance-officer', label: 'Data protection check', intent: 'dpo_check', delay: 3200 },
-      { from: 'data-compliance-officer', to: 'data-compliance-officer.officer-assignment', label: 'Assign DPO', intent: 'assign_officer', delay: 3800 },
-      { from: 'orchestrator', to: 'litigation', label: 'Flag for litigation review', intent: 'litigation_flag', delay: 4400 },
+      { from: 'platform', to: 'pre-signature-checklist', label: 'Check signature blockers', intent: 'pre_signature_check', delay: 0 },
+      { from: 'pre-signature-checklist', to: 'platform', label: 'Write readiness note', intent: 'checklist_complete', delay: 900 },
+      { from: 'platform', to: 'activation', label: 'Activate signed document', intent: 'activation', delay: 1800 },
+      { from: 'activation', to: 'platform', label: 'Create linked deadlines', intent: 'activation_complete', delay: 2700 },
     ],
   },
   {
     name: '15-Day Audit',
     trigger: 'Cron job fires /api/cron/full-audit',
-    description: 'The Compliance Audit Agent runs an adversarial scan across all entities, jurisdictions, KYC, emails, offices, and admin accounts — poking holes and generating a full report.',
+    description: 'Cron routes run compliance scanning and the adversarial audit report on the scheduled cadence.',
     color: 'text-fuchsia-400',
     steps: [
-      { from: 'cron', to: 'orchestrator', label: 'Audit triggered', intent: 'audit_start', delay: 0 },
-      { from: 'orchestrator', to: 'compliance-audit', label: 'Run full audit', intent: 'run_audit', delay: 600 },
-      { from: 'compliance-audit', to: 'compliance-audit.entity-scanner', label: 'Scan LSC/TBR/FSP', intent: 'scan_entities', delay: 1200 },
-      { from: 'compliance-audit', to: 'compliance-audit.office-tracker', label: 'Check offices', intent: 'check_offices', delay: 1400 },
-      { from: 'compliance-audit', to: 'compliance-audit.email-checker', label: 'Check emails', intent: 'check_emails', delay: 1600 },
-      { from: 'compliance-audit', to: 'compliance', label: 'Cross-check compliance records', intent: 'compliance_crosscheck', delay: 2400 },
-      { from: 'compliance-audit', to: 'kyc', label: 'Cross-check KYC docs', intent: 'kyc_crosscheck', delay: 2800 },
-      { from: 'compliance-audit', to: 'orchestrator', label: 'Audit report ready', intent: 'audit_complete', delay: 3800 },
-      { from: 'orchestrator', to: 'platform', label: 'Notify compliance officers', intent: 'notify_officers', delay: 4400 },
-    ],
-  },
-  {
-    name: 'Litigation Exposure',
-    trigger: 'New litigation case filed',
-    description: 'A litigation case creates financial exposure that must be communicated to the Finance Dashboard, with ongoing status updates.',
-    color: 'text-red-400',
-    steps: [
-      { from: 'platform', to: 'orchestrator', label: 'Case created', intent: 'case_created', delay: 0 },
-      { from: 'orchestrator', to: 'litigation', label: 'Process new case', intent: 'new_case', delay: 600 },
-      { from: 'litigation', to: 'litigation.case-tracker', label: 'Track case status', intent: 'track_case', delay: 1200 },
-      { from: 'litigation', to: 'litigation.finance-liaison', label: 'Calculate exposure', intent: 'calc_exposure', delay: 1400 },
-      { from: 'litigation.finance-liaison', to: 'orchestrator', label: 'Exposure: AED 500K', intent: 'exposure_update', delay: 2200 },
-      { from: 'orchestrator', to: 'finance', label: 'Financial exposure alert', intent: 'finance_exposure', delay: 2800 },
-      { from: 'orchestrator', to: 'compliance', label: 'Regulatory implications', intent: 'regulatory_check', delay: 3200 },
+      { from: 'cron', to: 'compliance', label: 'Run compliance scan', intent: 'compliance_scan', delay: 0 },
+      { from: 'compliance', to: 'platform', label: 'Create deduped alerts', intent: 'compliance_complete', delay: 900 },
+      { from: 'cron', to: 'compliance-audit', label: 'Run full audit', intent: 'full_audit', delay: 1800 },
+      { from: 'compliance-audit', to: 'platform', label: 'Persist AuditReport', intent: 'audit_complete', delay: 2700 },
     ],
   },
 ]
@@ -281,11 +228,17 @@ function getAgentPosition(agentId: string, width: number, height: number): { x: 
   const innerAgents = AGENTS.filter((a) => a.ring === 'inner')
   const idx = innerAgents.findIndex((a) => a.id === agentId)
 
-  if (agentId === 'orchestrator') return { x: cx, y: cy }
+  if (agentId === 'agent-runtime') return { x: cx, y: cy }
   if (agentId === 'platform') return { x: cx - 260, y: cy - 200 }
   if (agentId === 'finance') return { x: cx + 260, y: cy - 200 }
   if (agentId === 'gmail') return { x: cx - 260, y: cy + 180 }
   if (agentId === 'cron') return { x: cx + 260, y: cy + 180 }
+
+  if (idx !== -1) {
+    const angle = (idx / innerAgents.length) * Math.PI * 2 - Math.PI / 2
+    const radius = Math.min(width, height) * 0.32
+    return { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius }
+  }
 
   if (agentId.includes('.')) {
     const parentId = agentId.split('.')[0]
@@ -300,10 +253,7 @@ function getAgentPosition(agentId: string, width: number, height: number): { x: 
     return { x: parent.x + Math.cos(angle) * dist, y: parent.y + Math.sin(angle) * dist }
   }
 
-  if (idx === -1) return { x: cx, y: cy }
-  const angle = (idx / innerAgents.length) * Math.PI * 2 - Math.PI / 2
-  const radius = Math.min(width, height) * 0.32
-  return { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius }
+  return { x: cx, y: cy }
 }
 
 // ─── Main Component ─────────────────────────────────────────────────────────
@@ -451,13 +401,13 @@ export function AgentArchitectureView({ activityLog, stats }: Props) {
     const draw = () => {
       ctx.clearRect(0, 0, width, height)
 
-      // Draw base connections (orchestrator to inner agents)
-      const orchPos = getAgentPosition('orchestrator', width, height)
+      // Draw base connections (runtime to runnable agents)
+      const runtimePos = getAgentPosition('agent-runtime', width, height)
       AGENTS.filter((a) => a.ring === 'inner').forEach((agent) => {
         const pos = getAgentPosition(agent.id, width, height)
         const isActive = activeAgents.has(agent.id)
         ctx.beginPath()
-        ctx.moveTo(orchPos.x, orchPos.y)
+        ctx.moveTo(runtimePos.x, runtimePos.y)
         ctx.lineTo(pos.x, pos.y)
         ctx.strokeStyle = isActive ? 'rgba(139, 92, 246, 0.4)' : 'rgba(100, 116, 139, 0.12)'
         ctx.lineWidth = isActive ? 1.5 : 0.5
@@ -486,7 +436,7 @@ export function AgentArchitectureView({ activityLog, stats }: Props) {
         const pos = getAgentPosition(ext, width, height)
         const isActive = activeAgents.has(ext)
         ctx.beginPath()
-        ctx.moveTo(orchPos.x, orchPos.y)
+        ctx.moveTo(runtimePos.x, runtimePos.y)
         ctx.lineTo(pos.x, pos.y)
         ctx.strokeStyle = isActive ? 'rgba(234, 179, 8, 0.4)' : 'rgba(100, 116, 139, 0.08)'
         ctx.lineWidth = isActive ? 1 : 0.5
@@ -578,7 +528,9 @@ export function AgentArchitectureView({ activityLog, stats }: Props) {
               <Bot className="size-4 text-emerald-400" />
               <span className="text-xs text-muted-foreground">Active Agents</span>
             </div>
-            <p className="text-xl font-bold font-mono tabular-nums mt-1">{AGENTS.length}</p>
+            <p className="text-xl font-bold font-mono tabular-nums mt-1">
+              {AGENTS.filter((agent) => agent.ring === 'inner').length}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -633,8 +585,8 @@ export function AgentArchitectureView({ activityLog, stats }: Props) {
             {/* Orchestrator node */}
             <AgentNodeView
               agent={AGENTS[0]}
-              position={getAgentPosition('orchestrator', containerWidth, 500)}
-              isActive={activeAgents.has('orchestrator')}
+              position={getAgentPosition('agent-runtime', containerWidth, 500)}
+              isActive={activeAgents.has('agent-runtime')}
               isCore
             />
 
@@ -647,26 +599,6 @@ export function AgentArchitectureView({ activityLog, stats }: Props) {
                 isActive={activeAgents.has(agent.id)}
               />
             ))}
-
-            {/* Sub-agent dots */}
-            {AGENTS.filter((a) => a.ring === 'inner').flatMap((agent) =>
-              (agent.children ?? []).map((childId) => {
-                const pos = getAgentPosition(childId, containerWidth, 500)
-                const isActive = activeAgents.has(childId)
-                return (
-                  <div
-                    key={childId}
-                    className={`absolute flex items-center justify-center rounded-full transition-all duration-300 ${
-                      isActive ? 'size-6 bg-violet-500/30 ring-1 ring-violet-400/50' : 'size-4 bg-muted/50'
-                    }`}
-                    style={{ left: pos.x - (isActive ? 12 : 8), top: pos.y - (isActive ? 12 : 8) }}
-                    title={childId}
-                  >
-                    <div className={`rounded-full ${isActive ? 'size-2.5 bg-violet-400' : 'size-1.5 bg-muted-foreground/30'}`} />
-                  </div>
-                )
-              })
-            )}
 
             {/* External system nodes */}
             {[

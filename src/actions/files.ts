@@ -43,7 +43,12 @@ export async function uploadDocumentFile(formData: FormData) {
     // the agent to complete.
     after(async () => {
       try {
-        await runAgent("agreement-analyzer", { documentId, content })
+        await runAgent("agreement-analyzer", {
+          documentId,
+          sourceType: "legal_document",
+          sourceLabel: file.name,
+          content,
+        })
       } catch (e) {
         console.error("Agent analysis failed (non-blocking):", e)
       }
@@ -81,7 +86,7 @@ export async function uploadVersionFile(formData: FormData) {
       select: { version_number: true },
     })
 
-    await prisma.documentVersion.create({
+    const version = await prisma.documentVersion.create({
       data: {
         document_id: documentId,
         version_number: (lastVersion?.version_number ?? 0) + 1,
@@ -90,6 +95,29 @@ export async function uploadVersionFile(formData: FormData) {
         created_by: session.userId,
       },
     })
+
+    const extractedText = await extractTextFromFile(file)
+    const doc = await prisma.legalDocument.findUnique({
+      where: { id: documentId },
+      select: { title: true, notes: true },
+    })
+    const content = extractedText.trim() || doc?.notes || doc?.title || ""
+
+    if (content.trim()) {
+      after(async () => {
+        try {
+          await runAgent("agreement-analyzer", {
+            documentId,
+            versionId: version.id,
+            sourceType: "document_version",
+            sourceLabel: file.name,
+            content,
+          })
+        } catch (e) {
+          console.error("Agent analysis failed (non-blocking):", e)
+        }
+      })
+    }
 
     revalidatePath(`/legal/documents/${documentId}`)
     return { success: true, data: { url } }

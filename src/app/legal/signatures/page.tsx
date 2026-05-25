@@ -8,16 +8,16 @@ import type { LifecycleStatus } from "@/generated/prisma/client"
 
 const DOCUMENT_COLUMNS = [
   { status: "DRAFT" as LifecycleStatus, title: "Draft", color: "slate" },
-  { status: "IN_REVIEW" as LifecycleStatus, title: "In Review", color: "sky" },
-  { status: "NEGOTIATION" as LifecycleStatus, title: "Finalized", color: "violet" },
-  { status: "AWAITING_SIGNATURE" as LifecycleStatus, title: "Sent", color: "indigo" },
+  { status: "IN_REVIEW" as LifecycleStatus, title: "Ready", color: "sky" },
+  { status: "NEGOTIATION" as LifecycleStatus, title: "Final Review", color: "violet" },
+  { status: "AWAITING_SIGNATURE" as LifecycleStatus, title: "Awaiting Parties", color: "indigo" },
 ]
 
 const SIGNATURE_COLUMNS = [
-  { status: "PENDING" as const, title: "Getting Signed", color: "amber" },
-  { status: "SENT" as const, title: "Being Signed", color: "blue" },
+  { status: "PENDING" as const, title: "Ready to Send", color: "amber" },
+  { status: "SENT" as const, title: "Sent", color: "blue" },
   { status: "SIGNED" as const, title: "Signed", color: "emerald" },
-  { status: "STALLED" as const, title: "Stalled", color: "rose" },
+  { status: "STALLED" as const, title: "Stalled / Declined", color: "rose" },
 ]
 
 function getEntityLabel(value: string): string {
@@ -59,7 +59,13 @@ export default async function SignaturesPage({
       file_url: true,
       updated_at: true,
       signature_requests: {
-        select: { status: true },
+        select: {
+          signatory_name: true,
+          signatory_email: true,
+          status: true,
+          signed_at: true,
+          updated_at: true,
+        },
       },
     },
   })
@@ -82,7 +88,13 @@ export default async function SignaturesPage({
           value: true,
           file_url: true,
           signature_requests: {
-            select: { status: true },
+            select: {
+              signatory_name: true,
+              signatory_email: true,
+              status: true,
+              signed_at: true,
+              updated_at: true,
+            },
           },
         },
       },
@@ -101,6 +113,8 @@ export default async function SignaturesPage({
         const pendingSignatureCount = d.signature_requests.filter(
           (request) => request.status === "PENDING"
         ).length
+        const signed = d.signature_requests.filter((request) => request.status === "SIGNED")
+        const awaiting = d.signature_requests.filter((request) => request.status !== "SIGNED")
 
         return {
           id: `doc_${d.id}`,
@@ -112,6 +126,13 @@ export default async function SignaturesPage({
           entity: getEntityLabel(d.entity),
           category: d.category.replace(/_/g, " "),
           pendingSignatureCount,
+          signerSummary: {
+            signed: signed.length,
+            pending: awaiting.length,
+            total: d.signature_requests.length,
+            signedNames: signed.map((request) => request.signatory_name),
+            pendingNames: awaiting.map((request) => request.signatory_name),
+          },
           hasFile: Boolean(d.file_url),
           canPrepareSignature:
             pendingSignatureCount > 0 &&
@@ -132,6 +153,8 @@ export default async function SignaturesPage({
         const pendingSignatureCount = r.document.signature_requests.filter(
           (request) => request.status === "PENDING"
         ).length
+        const signed = r.document.signature_requests.filter((request) => request.status === "SIGNED")
+        const awaiting = r.document.signature_requests.filter((request) => request.status !== "SIGNED")
 
         return {
           id: r.id,
@@ -143,6 +166,13 @@ export default async function SignaturesPage({
           entity: getEntityLabel(r.document.entity),
           category: r.document.category.replace(/_/g, " "),
           pendingSignatureCount,
+          signerSummary: {
+            signed: signed.length,
+            pending: awaiting.length,
+            total: r.document.signature_requests.length,
+            signedNames: signed.map((request) => request.signatory_name),
+            pendingNames: awaiting.map((request) => request.signatory_name),
+          },
           hasFile: Boolean(r.document.file_url),
           canPrepareSignature: r.status === "PENDING" && pendingSignatureCount > 0,
         }
@@ -199,7 +229,7 @@ export default async function SignaturesPage({
         <div className="h-3 border-l border-border" />
         <div className="flex items-center gap-1.5">
           <div className="h-2 w-2 rounded-full bg-amber-400" />
-          <span>HelloSign (Auto)</span>
+          <span>OpenSign (Auto)</span>
         </div>
       </div>
 

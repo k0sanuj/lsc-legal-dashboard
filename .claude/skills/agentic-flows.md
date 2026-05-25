@@ -6,6 +6,9 @@ webhook routes, cron routes, or Legal -> Finance sync code.
 ## Current Agent Registry
 
 Agents are instantiated in `src/lib/agents/orchestrator.ts`.
+`src/lib/agents/types.ts` must only list executable agents in this table.
+Conceptual subagents should not be added to `AgentId` or the architecture UI
+until they have a class, trigger, tests, and observable output.
 
 | Agent id | Class | Main trigger |
 | --- | --- | --- |
@@ -20,10 +23,14 @@ Agents are instantiated in `src/lib/agents/orchestrator.ts`.
 
 - `src/actions/documents.ts`
   - New upload with extracted text: schedules `agreement-analyzer` with `after()`.
+  - Analyzer output is persisted to `DocumentAnalysis`; the latest row is the source of truth for summaries, dates, clauses, gaps, risks, and next steps.
   - `DRAFT -> IN_REVIEW`: schedules `agreement-analyzer`.
   - `NEGOTIATION -> AWAITING_SIGNATURE`: schedules `pre-signature-checklist`.
   - `SIGNED -> ACTIVE`: schedules `activation`.
   - Any transition into `SIGNED`, `ACTIVE`, `EXPIRING`, `EXPIRED`, or `TERMINATED`: emits a Finance contract event.
+- `src/actions/files.ts`, `src/actions/kyc.ts`, `src/actions/litigation.ts`
+  - Manual document uploads, version uploads, KYC uploads, and litigation uploads all store files in S3 and schedule `agreement-analyzer`.
+  - KYC and litigation analysis rows use `DocumentAnalysis.kyc_document_id` or `DocumentAnalysis.litigation_document_id` instead of creating unrelated LegalDocument rows.
 - `src/app/api/webhooks/gmail/route.ts`
   - Requires `GMAIL_WEBHOOK_SECRET` via query token or `x-lsc-webhook-secret`.
   - Logs each Pub/Sub callback in `WebhookEventLog` with provider `gmail` and dedupes by Pub/Sub `messageId`.
@@ -34,29 +41,34 @@ Agents are instantiated in `src/lib/agents/orchestrator.ts`.
 - `src/app/api/cron/gmail-watch/route.ts`
   - Protected by `CRON_SECRET`.
   - Renews Gmail watches daily for all mailboxes in `GMAIL_WATCH_MAILBOXES`.
-- `src/actions/hellosign.ts`
-  - Creates a Dropbox Sign Embedded Requesting unclaimed draft using `fileUrls`.
-  - Returns the embedded `claimUrl` to the client; Dropbox Sign sends signer emails after the requester prepares and sends from the iframe.
-  - Stores the returned `signatureRequestId` in `LegalDocument.hellosign_envelope_id` when Dropbox Sign provides it.
-- `src/app/api/webhooks/hellosign/route.ts`
-  - Parses Dropbox Sign `multipart/form-data` callbacks from the `json` field.
-  - Verifies the callback HMAC via `EventCallbackHelper` before processing.
+- `src/actions/opensign.ts`
+  - Creates OpenSign document requests from a LegalDocument file and pending `SignatureRequest` rows.
+  - Uploads the current PDF to OpenSign, sends pending signers, and stores OpenSign provider IDs/signing links on Legal rows.
+  - Optional widget JSON can be supplied per signer; otherwise the action sends default signature/date widgets on page 1.
+  - Transitions the document to `AWAITING_SIGNATURE` and marks pending signers as `SENT`.
+- `src/app/api/webhooks/opensign/route.ts`
+  - Verifies `x-webhook-signature` / `x-opensign-signature` / `x-signature` with `OPENSIGN_WEBHOOK_SECRET` using HMAC-SHA256.
   - Dedupes callbacks with `WebhookEventLog.event_hash`.
-  - Uses `hellosign_envelope_id` first and title only as a legacy fallback.
-  - On all-signed callbacks, downloads the completed PDF, stores it in S3 as a document version, and emits the Legal -> Finance contract event.
-  - Signature-provider expansion is currently pinned/deferred. Do not expand Dropbox Sign; evaluate BoldSign only when the user reopens signature work.
+  - On viewed/signed/declined/stalled events, updates signer status fields and leaves stalled documents visible to admins.
+  - On completed events, stores the completed signed PDF in S3 as a new `DocumentVersion`, updates the main file, transitions lifecycle to `SIGNED`, starts final AI analysis, and emits Legal -> Finance sync.
+  - Dropbox Sign / HelloSign files are legacy-readable only. Do not add new user-facing Dropbox paths.
 - `src/app/api/cron/*.ts`
   - All cron routes must require `CRON_SECRET`. Missing secrets must deny requests.
+- `src/app/api/agents/route.ts`
+  - Admin-only diagnostic surface for direct `runAgent()` calls.
+  - Generic message routing is not a production workflow. Unsupported message
+    intents must remain unresponded and visible in `/legal/ops-monitor`.
 
 ## Required Runtime Env
 
 Production needs these variables in Vercel, not committed `.env` files:
 
-- Auth/database: `AUTH_SESSION_SECRET`, `DATABASE_URL`, `DIRECT_DATABASE_URL`
+- Auth/database: `AUTH_SESSION_SECRET`, `AUTH_ALLOWED_EMAILS`, `AUTH_APP_URL`, `AUTH_EMAIL_FROM`, `RESEND_API_KEY`, `DATABASE_URL`, `DIRECT_DATABASE_URL`
 - Cron: `CRON_SECRET`
-- AI: `AI_PROVIDER`, `ANTHROPIC_API_KEY`, optional `GEMINI_API_KEY`
+- AI: `AI_PROVIDER=gemini`, `GEMINI_API_KEY`, optional `ANTHROPIC_API_KEY` fallback
 - S3: `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`
-- Dropbox Sign legacy/deferred: `HELLOSIGN_API_KEY`, `HELLOSIGN_CLIENT_ID`, `HELLOSIGN_TEST_MODE`
+- OpenSign: `OPENSIGN_BASE_URL`, `OPENSIGN_PUBLIC_URL`, `OPENSIGN_API_TOKEN`, `OPENSIGN_WEBHOOK_SECRET`, `OPENSIGN_WEBHOOK_URL`
+- Dropbox Sign legacy-readable only: `HELLOSIGN_API_KEY`, `HELLOSIGN_CLIENT_ID`, `HELLOSIGN_TEST_MODE`
 - Gmail: `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_CLOUD_PROJECT_ID`
 - Gmail webhook: `GMAIL_WEBHOOK_SECRET`, `GMAIL_WATCH_MAILBOXES`
 - Finance webhook: `FINANCE_WEBHOOK_URL`, `FINANCE_WEBHOOK_KEY`, `FINANCE_WEBHOOK_SECRET`
@@ -70,29 +82,30 @@ Production needs these variables in Vercel, not committed `.env` files:
 3. Mark the queue row and originating Legal row as `synced` or `failed`.
 4. `/api/cron/finance-resync` retries failed Legal -> Finance events.
 
-Do not bypass `emitFinanceEvent()` for new contract, tranche, or share grant flows.
+Do not bypass `emitFinanceEvent()` for new contract, tranche, share grant, or invoice flows.
+TBR invoice detection uses `invoice_detected` through the durable Finance queue.
 
 ## Verification Checklist
 
 Run these before handing off agent or sync changes:
 
 ```bash
-npm run build
-npm run lint
-npx prisma validate
-npx vercel env ls
+npm run release:gate
 ```
 
 Expected current state after the May 4, 2026 cleanup:
 
-- `npm run build` passes locally with `NODE_OPTIONS=--max-old-space-size=4096`.
-- `npx prisma validate` passes.
-- `npm run lint` exits 0; older explicit-any and unused-variable debt remains as warnings.
+- `npm run release:gate` runs env/route checks, Prisma validate, TypeScript, lint, and build.
 - Vercel Production/Preview must be given `CRON_SECRET`; otherwise scheduled jobs will deny by design.
 - Google Pub/Sub must call `/api/webhooks/gmail?token=<GMAIL_WEBHOOK_SECRET>` or send `x-lsc-webhook-secret`.
+- OpenSign must call `/api/webhooks/opensign` and sign the exact raw JSON body with `OPENSIGN_WEBHOOK_SECRET`.
 
 ## Known Risks To Fix Next
 
-- Dropbox Sign/BoldSign work is intentionally pinned. Do not spend time on signature-provider work unless the user reopens it.
-- Existing AI extraction is not persisted as structured document metadata, so later lifecycle agents can still re-read `notes` instead of stored extracted file text.
+- OpenSign live deployment still requires Render-hosted OpenSign, MongoDB, mail, storage, API token, and webhook secret configuration.
+- AI extraction source of truth is `DocumentAnalysis`, keyed to Legal documents, versions, KYC documents, or litigation documents. Do not depend on analyzer log JSON except as legacy fallback.
+- Gemini is the primary AI provider for agents. If Anthropic is configured, it is
+  only a fallback for provider/quota/rate-limit failures.
+- Run `node scripts/check-agent-hygiene.mjs` when changing agents, agent UI,
+  Finance retry routing, or required runtime tables.
 - `.claude/skills/prisma-schema.md` and `.claude/skills/finance-integration.md` are historical references; verify against `prisma/schema.prisma` and current webhook code before relying on them.

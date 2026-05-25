@@ -1,33 +1,23 @@
 export type AgentId =
-  | 'orchestrator'
   | 'compliance'
-  | 'compliance.jurisdiction'
-  | 'compliance.data-protection'
-  | 'compliance.renewal-tracker'
   | 'agreement-analyzer'
-  | 'agreement-analyzer.categorization'
-  | 'agreement-analyzer.clause-extraction'
-  | 'agreement-analyzer.clickwrap-tracker'
-  | 'kyc'
-  | 'kyc.admin-accounts'
-  | 'kyc.vendor-verification'
-  | 'litigation'
-  | 'litigation.case-tracker'
-  | 'litigation.finance-liaison'
-  | 'email-inbox'
   | 'email-inbox.invoice-detection'
-  | 'email-inbox.notice-detection'
-  | 'email-inbox.deadline-extraction'
   | 'compliance-audit'
-  | 'compliance-audit.entity-scanner'
-  | 'compliance-audit.office-tracker'
-  | 'compliance-audit.email-checker'
-  | 'data-compliance-officer'
-  | 'data-compliance-officer.gdpr'
-  | 'data-compliance-officer.jurisdiction-policy'
-  | 'data-compliance-officer.officer-assignment'
   | 'pre-signature-checklist'
   | 'activation'
+
+export const RUNNABLE_AGENT_IDS = [
+  'agreement-analyzer',
+  'pre-signature-checklist',
+  'activation',
+  'email-inbox.invoice-detection',
+  'compliance',
+  'compliance-audit',
+] as const satisfies readonly AgentId[]
+
+export function isRunnableAgentId(value: unknown): value is AgentId {
+  return typeof value === 'string' && RUNNABLE_AGENT_IDS.includes(value as AgentId)
+}
 
 export type AgentMessagePriority = 'critical' | 'high' | 'normal' | 'low'
 

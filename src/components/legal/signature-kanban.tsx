@@ -15,7 +15,7 @@ import { useDraggable, useDroppable } from "@dnd-kit/core"
 import { updateSignatureStatus } from "@/actions/signatures"
 import { transitionDocument } from "@/actions/documents"
 import { FileText, User, Clock, Building, Tag } from "lucide-react"
-import { DropboxSignPrepButton } from "@/components/legal/send-for-signature-button"
+import { OpenSignPrepButton } from "@/components/legal/send-for-signature-button"
 import type { LifecycleStatus, SignatureStatus } from "@/generated/prisma/client"
 
 interface KanbanItem {
@@ -28,6 +28,13 @@ interface KanbanItem {
   entity?: string
   category?: string
   pendingSignatureCount?: number
+  signerSummary?: {
+    signed: number
+    pending: number
+    total: number
+    signedNames: string[]
+    pendingNames: string[]
+  }
   hasFile?: boolean
   canPrepareSignature?: boolean
 }
@@ -153,6 +160,19 @@ function ItemContent({
         <User className="size-2.5" />
         <span className="truncate">{item.signatoryName}</span>
       </div>
+      {item.signerSummary && item.signerSummary.total > 0 ? (
+        <div className="rounded-md border border-border/40 bg-muted/30 p-2 text-[10px] text-muted-foreground">
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              {item.signerSummary.signed}/{item.signerSummary.total} signed
+            </span>
+            <span>{item.signerSummary.pending} awaiting</span>
+          </div>
+          <div className="mt-1 truncate">
+            Pending: {item.signerSummary.pendingNames.join(", ") || "None"}
+          </div>
+        </div>
+      ) : null}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
           <Clock className="size-2.5" />
@@ -168,7 +188,7 @@ function ItemContent({
       </div>
       {showAction && item.canPrepareSignature && (
         <div className="pt-1">
-          <DropboxSignPrepButton
+          <OpenSignPrepButton
             documentId={item.documentId}
             pendingCount={item.pendingSignatureCount ?? 0}
             disabled={!item.hasFile}

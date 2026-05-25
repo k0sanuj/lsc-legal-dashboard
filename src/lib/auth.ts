@@ -7,14 +7,20 @@ import {
   clearSessionCookie,
   type SessionPayload,
 } from "./session"
+import { isEmailAllowedToLogin, normalizeLoginEmail } from "./auth-allowlist"
 import type { UserRole } from "@/generated/prisma/client"
 
 export async function authenticateWithPassword(
   email: string,
   password: string
 ): Promise<{ success: boolean; error?: string }> {
+  const normalizedEmail = normalizeLoginEmail(email)
+  if (!isEmailAllowedToLogin(normalizedEmail)) {
+    return { success: false, error: "Invalid email or password" }
+  }
+
   const user = await prisma.appUser.findUnique({
-    where: { email: email.toLowerCase().trim() },
+    where: { email: normalizedEmail },
   })
 
   if (!user || !user.is_active) {

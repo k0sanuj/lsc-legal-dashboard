@@ -13,6 +13,7 @@ const FINANCE_EVENT_TYPES: FinanceEventType[] = [
   "tranche.updated",
   "share_grant.created",
   "share_grant.updated",
+  "invoice_detected",
 ]
 
 const MAX_ATTEMPTS = 6 // ~1.5h total at 15-min intervals
@@ -120,6 +121,21 @@ export async function GET(request: Request) {
             last_finance_post_at: new Date(),
             finance_post_status: result.ok ? "synced" : "failed",
             last_finance_post_error: result.ok ? null : (result.error ?? "Unknown"),
+          },
+        })
+        .catch(() => {})
+    } else if (evt.entity_type === "DetectedInvoice") {
+      await prisma.detectedInvoice
+        .update({
+          where: { id: evt.entity_id },
+          data: {
+            routed_to_finance: result.ok,
+            notes: [
+              typeof payload.notes === "string" ? payload.notes : null,
+              `Finance retry ${attempts}: ${result.ok ? "synced" : result.error ?? "failed"}`,
+            ]
+              .filter(Boolean)
+              .join("\n"),
           },
         })
         .catch(() => {})

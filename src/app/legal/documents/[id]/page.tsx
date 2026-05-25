@@ -2,7 +2,6 @@ import { notFound } from "next/navigation"
 import { prisma } from "@/lib/prisma"
 import { requireSession } from "@/lib/auth"
 import {
-  LIFECYCLE_STATUS_LABELS,
   ENTITIES,
 } from "@/lib/constants"
 import { formatAED, formatDate, formatRelativeDate } from "@/lib/format"
@@ -27,6 +26,7 @@ import {
   Users,
   StickyNote,
   ArrowRight,
+  ExternalLink,
 } from "lucide-react"
 import { NotesPanel } from "@/components/legal/notes-panel"
 import { CommentsPanel } from "@/components/legal/comments-panel"
@@ -34,6 +34,7 @@ import { SendForSignatureButton } from "@/components/legal/send-for-signature-bu
 import { FileDisplay } from "@/components/legal/file-display"
 import { FileUpload } from "@/components/legal/file-upload"
 import { DocumentFinancePanel } from "@/components/legal/document-finance-panel"
+import { DocumentAnalysisSummaryDrawer } from "@/components/legal/document-analysis-summary"
 import { uploadDocumentFile, deleteDocumentFile, uploadVersionFile } from "@/actions/files"
 import type { SignatureStatus } from "@/generated/prisma/client"
 
@@ -53,12 +54,16 @@ const SIGNATURE_STATUS_LABELS: Record<SignatureStatus, string> = {
 
 export default async function DocumentDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   await requireSession()
 
   const { id } = await params
+  const query = await searchParams
+  const openAnalysis = query.analysis === "open"
 
   const document = await prisma.legalDocument.findUnique({
     where: { id },
@@ -121,6 +126,10 @@ export default async function DocumentDetailPage({
               documentId={document.id}
               onDelete={deleteDocumentFile}
             />
+            <DocumentAnalysisSummaryDrawer
+              documentId={document.id}
+              autoOpen={openAnalysis}
+            />
             {!document.file_url && (
               <FileUpload
                 action={uploadDocumentFile}
@@ -128,6 +137,7 @@ export default async function DocumentDetailPage({
                 entityIdField="documentId"
                 extraFields={{ entity: document.entity, category: document.category }}
                 label="Attach File"
+                openAnalysisOnSuccess
               />
             )}
           </div>
@@ -268,6 +278,7 @@ export default async function DocumentDetailPage({
                 entityIdField="documentId"
                 extraFields={{ entity: document.entity, changeSummary: "New version uploaded" }}
                 label="Upload Version"
+                openAnalysisOnSuccess
               />
             </div>
 
@@ -347,6 +358,16 @@ export default async function DocumentDetailPage({
                         <span className="text-xs text-muted-foreground">
                           Sent {formatDate(sig.sent_at)}
                         </span>
+                      )}
+                      {sig.signing_url && (
+                        <a
+                          href={sig.signing_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-blue-400 underline-offset-4 hover:underline"
+                        >
+                          Link <ExternalLink className="h-3 w-3" />
+                        </a>
                       )}
                       {sig.signed_at && (
                         <span className="text-xs text-muted-foreground">

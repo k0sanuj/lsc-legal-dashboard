@@ -251,6 +251,7 @@ model AppUser {
   compliance_officer_for ComplianceOfficer[]
   assigned_litigation    LitigationCase[] @relation("LitigationAssignee")
   assigned_kyc           KycDocument[]    @relation("KycAssignee")
+  magic_link_tokens AuthMagicLinkToken[]
 }
 
 model AuthAccessEvent {
@@ -266,6 +267,27 @@ model AuthAccessEvent {
   user AppUser @relation(fields: [app_user_id], references: [id])
 
   @@index([app_user_id, created_at])
+}
+
+model AuthMagicLinkToken {
+  id                 String    @id @default(uuid())
+  app_user_id        String
+  email              String
+  token_hash         String    @unique
+  expires_at         DateTime
+  used_at            DateTime?
+  revoked_at         DateTime?
+  request_ip         String?
+  request_user_agent String?
+  consumed_ip        String?
+  consumed_user_agent String?
+  created_at         DateTime  @default(now())
+
+  user AppUser @relation(fields: [app_user_id], references: [id], onDelete: Cascade)
+
+  @@index([app_user_id, expires_at])
+  @@index([email, created_at])
+  @@index([expires_at])
 }
 
 // ─── Legal Document Core ─────────────────────────────────────────────────────
@@ -292,6 +314,11 @@ model LegalDocument {
   financial_impact_recurring Decimal?
   financial_impact_onetime   Decimal?
   auto_renew       Boolean          @default(false)
+  signature_provider String?
+  signature_provider_request_id String?
+  signature_status String?
+  signature_sent_at DateTime?
+  signature_completed_at DateTime?
   hellosign_envelope_id String?
 
   // Finance integration: contract metadata sent in contract.created /
@@ -327,12 +354,14 @@ model LegalDocument {
   notes_entries      DocumentNote[]
   comments           DocumentComment[]
   webhook_events     WebhookEventLog[]
+  analyses           DocumentAnalysis[]
 
   @@index([entity, lifecycle_status])
   @@index([expiry_date])
   @@index([owner_id])
   @@index([category])
   @@index([finance_post_status])
+  @@index([signature_provider, signature_provider_request_id])
 }
 
 model DocumentVersion {
@@ -345,8 +374,46 @@ model DocumentVersion {
   created_at      DateTime @default(now())
 
   document LegalDocument @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  analyses DocumentAnalysis[]
 
   @@index([document_id, version_number])
+}
+
+model DocumentAnalysis {
+  id                     String   @id @default(uuid())
+  document_id            String?
+  version_id             String?
+  kyc_document_id        String?
+  litigation_document_id String?
+  source_type            String   @default("legal_document")
+  source_label           String?
+  status                 String   @default("complete")
+  summary                String?
+  suggested_category     String?
+  suggested_file_name    String?
+  key_fields             Json?
+  key_dates              Json?
+  key_clauses            Json?
+  obligations            Json?
+  financial_terms        Json?
+  unusual_clauses        Json?
+  missing_gaps           Json?
+  recommended_next_steps Json?
+  raw_payload            Json?
+  error                  String?
+  created_at             DateTime @default(now())
+  updated_at             DateTime @updatedAt
+
+  document            LegalDocument?      @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  version             DocumentVersion?    @relation(fields: [version_id], references: [id], onDelete: SetNull)
+  kyc_document        KycDocument?        @relation(fields: [kyc_document_id], references: [id], onDelete: Cascade)
+  litigation_document LitigationDocument? @relation(fields: [litigation_document_id], references: [id], onDelete: Cascade)
+
+  @@index([document_id, created_at])
+  @@index([version_id])
+  @@index([kyc_document_id, created_at])
+  @@index([litigation_document_id, created_at])
+  @@index([source_type, status])
 }
 
 model LifecycleEvent {
@@ -372,7 +439,11 @@ model SignatureRequest {
   signatory_email String
   status          SignatureStatus @default(PENDING)
   sent_at         DateTime?
+  viewed_at       DateTime?
   signed_at       DateTime?
+  declined_at     DateTime?
+  provider_signer_id String?
+  signing_url     String?
   reminder_count  Int             @default(0)
   stalled_reason  String?
   created_at      DateTime        @default(now())
@@ -382,6 +453,7 @@ model SignatureRequest {
 
   @@index([document_id, status])
   @@index([status])
+  @@index([provider_signer_id])
 }
 
 model WebhookEventLog {
@@ -726,6 +798,7 @@ model KycDocument {
   updated_at    DateTime     @updatedAt
 
   verifier AppUser? @relation("KycAssignee", fields: [verified_by], references: [id])
+  analyses DocumentAnalysis[]
 
   @@index([entity, jurisdiction])
   @@index([status])
@@ -811,6 +884,7 @@ model LitigationDocument {
   created_at  DateTime @default(now())
 
   case_record LitigationCase @relation(fields: [case_id], references: [id], onDelete: Cascade)
+  analyses DocumentAnalysis[]
 
   @@index([case_id])
 }

@@ -1,8 +1,9 @@
 import { cookies } from "next/headers"
 import type { UserRole } from "@/generated/prisma/client"
+import { isEmailAllowedToLogin } from "./auth-allowlist"
 
 const COOKIE_NAME = "lsc_legal_session"
-const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+const SESSION_DURATION_MS = 90 * 24 * 60 * 60 * 1000 // 90 days
 
 export interface SessionPayload {
   userId: string
@@ -80,6 +81,7 @@ export async function verifySessionToken(
     const payload = JSON.parse(atob(padded)) as SessionPayload
 
     if (payload.exp < Date.now()) return null
+    if (!isEmailAllowedToLogin(payload.email)) return null
 
     return payload
   } catch {

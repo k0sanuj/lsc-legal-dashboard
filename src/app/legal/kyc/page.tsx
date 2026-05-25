@@ -2,6 +2,9 @@ import { prisma } from "@/lib/prisma"
 import { requireSession } from "@/lib/auth"
 import { ENTITIES, formatDate } from "@/lib/constants"
 import { CreateKycForm } from "@/components/legal/create-kyc-form"
+import { DocumentAnalysisSummaryDrawer } from "@/components/legal/document-analysis-summary"
+import { FileUpload } from "@/components/legal/file-upload"
+import { uploadKycDocumentFile } from "@/actions/kyc"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -22,6 +25,7 @@ import {
   ShieldCheck,
   FileCheck,
   AlertTriangle,
+  ExternalLink,
   RefreshCw,
 } from "lucide-react"
 import type {
@@ -293,6 +297,7 @@ export default async function KycPage({
                   <TableHead>Jurisdiction</TableHead>
                   <TableHead>Document Type</TableHead>
                   <TableHead>Document Name</TableHead>
+                  <TableHead>File</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Expiry Date</TableHead>
                   <TableHead>Verified By</TableHead>
@@ -320,6 +325,35 @@ export default async function KycPage({
                       </TableCell>
                       <TableCell className="font-medium">
                         {doc.document_name}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {doc.file_url ? (
+                            <>
+                              <a
+                                href={doc.file_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-xs text-blue-400 underline-offset-4 hover:underline"
+                              >
+                                Open <ExternalLink className="h-3 w-3" />
+                              </a>
+                              <DocumentAnalysisSummaryDrawer
+                                documentId={doc.id}
+                                targetType="kyc"
+                                compact
+                              />
+                            </>
+                          ) : (
+                            <FileUpload
+                              action={uploadKycDocumentFile}
+                              entityId={doc.id}
+                              entityIdField="kycDocumentId"
+                              extraFields={{ entity: doc.entity }}
+                              label="Attach"
+                            />
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge

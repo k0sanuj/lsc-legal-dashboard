@@ -1,23 +1,26 @@
 "use server"
 
-import { authenticateWithPassword } from "@/lib/auth"
-import { redirect } from "next/navigation"
+import { getRequestContext, requestMagicLink } from "@/lib/magic-link"
 
-export async function loginAction(
-  _prevState: { error?: string } | null,
+export async function requestMagicLinkAction(
+  _prevState: { error?: string; message?: string; debugLink?: string } | null,
   formData: FormData
 ) {
   const email = formData.get("email") as string
-  const password = formData.get("password") as string
 
-  if (!email || !password) {
-    return { error: "Email and password are required" }
+  if (!email) {
+    return { error: "Email is required" }
   }
 
-  const result = await authenticateWithPassword(email, password)
+  const context = await getRequestContext()
+  const result = await requestMagicLink(email, context)
+
   if (!result.success) {
-    return { error: result.error ?? "Authentication failed" }
+    return { error: result.message }
   }
 
-  redirect("/legal")
+  return {
+    message: result.message,
+    debugLink: result.debugLink,
+  }
 }

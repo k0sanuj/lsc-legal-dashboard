@@ -2,15 +2,28 @@ import { prisma } from '@/lib/prisma'
 import { BaseAgent } from './base-agent'
 import { LSC_LEGAL_CONTEXT } from './shared-context'
 import type { AgentResult } from './types'
+import {
+  persistDocumentAnalysisFailure,
+  persistDocumentAnalysisSuccess,
+  type AnalysisTarget,
+} from '@/lib/document-analysis-persistence'
 
 interface AnalyzerInput {
-  documentId: string
+  documentId?: string
+  versionId?: string
+  kycDocumentId?: string
+  litigationDocumentId?: string
+  sourceType?: AnalysisTarget["sourceType"]
+  sourceLabel?: string
   content: string
 }
 
 interface AnalysisResult {
+  summary: string
+  keyFields: { label: string; value: string; confidence?: 'low' | 'medium' | 'high' }[]
   suggestedCategory: string
   keyDates: { label: string; date: string }[]
+  keyClauses: { clause: string; summary: string; riskLevel: 'low' | 'medium' | 'high' }[]
   obligations: { party: string; obligation: string; deadline?: string }[]
   financialTerms: {
     totalValue?: string
@@ -19,6 +32,8 @@ interface AnalysisResult {
     penalties?: string
   }
   unusualClauses: { clause: string; concern: string; riskLevel: 'low' | 'medium' | 'high' }[]
+  missingGaps: { gap: string; impact: string; severity: 'low' | 'medium' | 'high' }[]
+  recommendedNextSteps: { action: string; owner?: string; priority: 'low' | 'medium' | 'high' }[]
   suggestedFileName: string
 }
 
@@ -26,8 +41,11 @@ const TASK_INSTRUCTIONS = `Task: Analyze the legal document below and extract st
 
 Output JSON schema:
 {
+  "summary": "plain-English summary of the uploaded document in 2-4 sentences",
+  "keyFields": [{ "label": "field name", "value": "field value", "confidence": "low|medium|high" }],
   "suggestedCategory": "<one of the Category enum values>",
   "keyDates": [{ "label": "string", "date": "YYYY-MM-DD" }],
+  "keyClauses": [{ "clause": "clause/topic name", "summary": "what the clause does", "riskLevel": "low|medium|high" }],
   "obligations": [{ "party": "string", "obligation": "string", "deadline": "YYYY-MM-DD or null" }],
   "financialTerms": {
     "totalValue": "string or null",
@@ -36,10 +54,17 @@ Output JSON schema:
     "penalties": "string or null"
   },
   "unusualClauses": [{ "clause": "string", "concern": "string", "riskLevel": "low|medium|high" }],
+  "missingGaps": [{ "gap": "missing or unclear item", "impact": "why it matters", "severity": "low|medium|high" }],
+  "recommendedNextSteps": [{ "action": "recommended action", "owner": "suggested owner or null", "priority": "low|medium|high" }],
   "counterparty": "string or null",
   "entity": "LSC|TBR|FSP|XTZ|XTE or null",
   "sport": "BOWLING|SQUASH|BASKETBALL|WORLD_PONG|FOUNDATION (when entity=FSP and contract is for a tournament property) or null"
-}`
+}
+
+Focus especially on the fields a Legal/Ops user needs immediately after upload:
+parties, dates, value/payment terms, renewal/termination mechanics, signing gaps,
+missing schedules/exhibits, unresolved placeholders, approval blockers, and next
+actions before the document is signed or activated.`
 
 const SYSTEM_PROMPT = `${LSC_LEGAL_CONTEXT}\n\n${TASK_INSTRUCTIONS}`
 
@@ -50,16 +75,41 @@ export class AgreementAnalyzerAgent extends BaseAgent {
     'Analyzes legal documents using AI to extract categories, key dates, obligations, financial terms, unusual clauses, and suggests standardized file names.'
 
   async run(input?: unknown): Promise<AgentResult> {
-    const { documentId, content } = (input ?? {}) as AnalyzerInput
+    const {
+      documentId,
+      versionId,
+      kycDocumentId,
+      litigationDocumentId,
+      sourceType,
+      sourceLabel,
+      content,
+    } = (input ?? {}) as AnalyzerInput
+    const referenceId = documentId ?? kycDocumentId ?? litigationDocumentId
+    const target: AnalysisTarget = {
+      documentId: documentId ?? null,
+      versionId: versionId ?? null,
+      kycDocumentId: kycDocumentId ?? null,
+      litigationDocumentId: litigationDocumentId ?? null,
+      sourceType:
+        sourceType ??
+        (versionId ? 'document_version' : kycDocumentId ? 'kyc_document' : litigationDocumentId ? 'litigation_document' : 'legal_document'),
+      sourceLabel: sourceLabel ?? null,
+    }
 
-    if (!documentId || !content) {
+    if (!referenceId || !content) {
       return {
         success: false,
-        error: 'Missing required input: documentId and content are required.',
+        error: 'Missing required input: a source id and content are required.',
       }
     }
 
-    await this.log('analysis_started', { documentId, contentLength: content.length })
+    await this.log('analysis_started', {
+      documentId,
+      kycDocumentId,
+      litigationDocumentId,
+      sourceType: target.sourceType,
+      contentLength: content.length,
+    })
 
     // ── 1. Call AI for document analysis ──────────────────────────────────────
 
@@ -69,11 +119,12 @@ export class AgreementAnalyzerAgent extends BaseAgent {
         system: SYSTEM_PROMPT,
         user: `Document to analyze:\n\n${content}`,
         model: 'haiku',
-        maxTokens: 1024,
+        maxTokens: 1800,
         expectJson: true,
       })
     } catch (error) {
-      await this.log('ai_call_failed', { documentId, error: String(error) })
+      await this.log('ai_call_failed', { documentId, kycDocumentId, litigationDocumentId, error: String(error) })
+      await persistDocumentAnalysisFailure(target, `AI analysis failed: ${String(error)}`)
       return { success: false, error: `AI analysis failed: ${String(error)}` }
     }
 
@@ -85,10 +136,17 @@ export class AgreementAnalyzerAgent extends BaseAgent {
       const cleaned = rawResponse.replace(/```(?:json)?\s*/g, '').replace(/```\s*/g, '').trim()
       parsed = JSON.parse(cleaned)
     } catch {
-      await this.log('parse_failed', { documentId, rawResponse: rawResponse.slice(0, 500) })
+      const error = 'Failed to parse AI response as JSON.'
+      await this.log('parse_failed', {
+        documentId,
+        kycDocumentId,
+        litigationDocumentId,
+        rawResponse: rawResponse.slice(0, 500),
+      })
+      await persistDocumentAnalysisFailure(target, error, { rawResponse })
       return {
         success: false,
-        error: 'Failed to parse AI response as JSON.',
+        error,
         data: { rawResponse },
       }
     }
@@ -110,7 +168,7 @@ export class AgreementAnalyzerAgent extends BaseAgent {
 
     await prisma.fileNamingLog.create({
       data: {
-        original_name: documentId,
+        original_name: referenceId,
         renamed_to: suggestedFileName,
         entity: isValidEntity(entity) ? (entity as any) : null,
         category,
@@ -120,21 +178,37 @@ export class AgreementAnalyzerAgent extends BaseAgent {
     // ── 5. Return analysis ───────────────────────────────────────────────────
 
     const analysis: AnalysisResult = {
+      summary: parsed.summary ?? 'No summary returned.',
+      keyFields: parsed.keyFields ?? [],
       suggestedCategory: parsed.suggestedCategory,
       keyDates: parsed.keyDates ?? [],
+      keyClauses: parsed.keyClauses ?? [],
       obligations: parsed.obligations ?? [],
       financialTerms: parsed.financialTerms ?? {},
       unusualClauses: parsed.unusualClauses ?? [],
+      missingGaps: parsed.missingGaps ?? [],
+      recommendedNextSteps: parsed.recommendedNextSteps ?? [],
       suggestedFileName,
     }
 
+    await persistDocumentAnalysisSuccess(target, analysis, parsed)
+
     await this.log('analysis_complete', {
       documentId,
+      kycDocumentId,
+      litigationDocumentId,
+      sourceType: target.sourceType,
+      analysis,
+      summary: analysis.summary,
+      keyFields: analysis.keyFields,
       category: analysis.suggestedCategory,
       keyDates: analysis.keyDates,
+      keyClauses: analysis.keyClauses,
       keyDatesCount: analysis.keyDates.length,
       obligationsCount: analysis.obligations.length,
       unusualClausesCount: analysis.unusualClauses.length,
+      missingGapsCount: analysis.missingGaps.length,
+      recommendedNextStepsCount: analysis.recommendedNextSteps.length,
     })
 
     return {

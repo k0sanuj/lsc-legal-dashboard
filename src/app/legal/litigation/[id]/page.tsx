@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { DocumentAnalysisSummaryDrawer } from "@/components/legal/document-analysis-summary"
+import { LitigationDocumentUploadForm } from "@/components/legal/litigation-document-upload-form"
 import {
   Card,
   CardContent,
@@ -346,11 +348,14 @@ export default async function LitigationDetailPage({
 
       {/* Documents */}
       <Card>
-        <CardHeader>
-          <CardTitle>Documents</CardTitle>
-          <CardDescription>
-            Files and documents related to this case
-          </CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle>Documents</CardTitle>
+            <CardDescription>
+              Files and documents related to this case
+            </CardDescription>
+          </div>
+          <LitigationDocumentUploadForm caseId={litigationCase.id} />
         </CardHeader>
         <CardContent>
           {litigationCase.documents.length === 0 ? (
@@ -387,14 +392,21 @@ export default async function LitigationDetailPage({
                     <TableCell>{formatDate(doc.created_at)}</TableCell>
                     <TableCell>
                       {doc.file_url ? (
-                        <a
-                          href={doc.file_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-blue-400 underline-offset-4 hover:underline"
-                        >
-                          Open <ExternalLink className="h-3 w-3" />
-                        </a>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <a
+                            href={doc.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-blue-400 underline-offset-4 hover:underline"
+                          >
+                            Open <ExternalLink className="h-3 w-3" />
+                          </a>
+                          <DocumentAnalysisSummaryDrawer
+                            documentId={doc.id}
+                            targetType="litigation"
+                            compact
+                          />
+                        </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">
                           No file

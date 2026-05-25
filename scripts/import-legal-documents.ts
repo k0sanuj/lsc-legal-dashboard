@@ -11,6 +11,7 @@ type ImportedModules = {
   uploadBufferToS3: typeof import("../src/lib/s3").uploadBufferToS3
   getS3Key: typeof import("../src/lib/s3").getS3Key
   extractTextFromFile: typeof import("../src/lib/extract-text").extractTextFromFile
+  runAgent: typeof import("../src/lib/agents/orchestrator").runAgent
 }
 
 type SourceMailbox = "legal@leaguesportsco.com" | "anuj@leaguesportsco.com"
@@ -383,7 +384,7 @@ async function importCandidate(
     },
   })
 
-  await modules.prisma.documentVersion.create({
+  const version = await modules.prisma.documentVersion.create({
     data: {
       document_id: document.id,
       version_number: 1,
@@ -392,6 +393,17 @@ async function importCandidate(
       created_by: ownerId,
     },
   })
+
+  const analysisContent = extractedText.trim() || notes
+  if (analysisContent.trim()) {
+    await modules.runAgent("agreement-analyzer", {
+      documentId: document.id,
+      versionId: version.id,
+      sourceType: "gmail_import",
+      sourceLabel: candidate.filename,
+      content: analysisContent,
+    })
+  }
 
   await modules.prisma.lifecycleEvent.create({
     data: {
@@ -411,11 +423,13 @@ async function main() {
   const prismaModule = await import("../src/lib/prisma")
   const s3Module = await import("../src/lib/s3")
   const extractModule = await import("../src/lib/extract-text")
+  const agentsModule = await import("../src/lib/agents/orchestrator")
   const modules: ImportedModules = {
     prisma: prismaModule.prisma,
     uploadBufferToS3: s3Module.uploadBufferToS3,
     getS3Key: s3Module.getS3Key,
     extractTextFromFile: extractModule.extractTextFromFile,
+    runAgent: agentsModule.runAgent,
   }
 
   const owner = await modules.prisma.appUser.findFirst({

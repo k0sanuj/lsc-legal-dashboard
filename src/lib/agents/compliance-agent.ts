@@ -10,7 +10,7 @@ export class ComplianceAgent extends BaseAgent {
 
   async run(): Promise<AgentResult> {
     const now = new Date()
-    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+    const notificationDedupeSince = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
     const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
 
     const findings: {
@@ -85,7 +85,7 @@ export class ComplianceAgent extends BaseAgent {
           title: `Compliance Check: ${alertItems.length} item(s) require attention`,
           message: alertItems.join('\n'),
           link: '/compliance',
-          since: oneDayAgo,
+          since: notificationDedupeSince,
         })
         if (created) findings.notificationsCreated++
       }
@@ -102,9 +102,9 @@ export class ComplianceAgent extends BaseAgent {
       )
 
       // Check if we should fire an alert at any threshold
-      const matchedThreshold = alertThresholds.find(
-        (threshold) => daysUntilRenewal <= threshold && daysUntilRenewal > 0
-      )
+      const matchedThreshold = [...alertThresholds]
+        .sort((a, b) => a - b)
+        .find((threshold) => daysUntilRenewal <= threshold && daysUntilRenewal > 0)
 
       if (matchedThreshold !== undefined || daysUntilRenewal <= 0) {
         findings.officeAlerts.push({
@@ -142,10 +142,10 @@ export class ComplianceAgent extends BaseAgent {
           const created = await this.createNotificationOnce({
             userId,
             type: 'office_renewal_alert',
-            title: `[${urgency}] Office Agreement Renewal — ${agreement.entity}`,
+            title: `[${urgency}/${matchedThreshold ?? 'OVERDUE'}] Office Agreement Renewal — ${agreement.entity}`,
             message: `Registered office at ${agreement.address} (${agreement.jurisdiction}) ${daysUntilRenewal <= 0 ? 'is OVERDUE for renewal' : `renews in ${daysUntilRenewal} day(s)`}.`,
             link: '/compliance',
-            since: oneDayAgo,
+            since: notificationDedupeSince,
           })
           if (created) findings.notificationsCreated++
         }
@@ -191,7 +191,7 @@ export class ComplianceAgent extends BaseAgent {
         user_id: userId,
         type,
         title,
-        message,
+        link,
         created_at: { gte: since },
       },
       select: { id: true },
