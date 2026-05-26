@@ -18,7 +18,13 @@ export function PasswordLoginForm({ initialError }: { initialError?: string }) {
   const error = state?.error ?? initialError
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form
+      action={formAction}
+      className="space-y-4"
+      name="login"
+      autoComplete="on"
+      aria-label="Sign in to Legal OS"
+    >
       {error && (
         <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
@@ -33,9 +39,14 @@ export function PasswordLoginForm({ initialError }: { initialError?: string }) {
           id="email"
           name="email"
           type="email"
-          placeholder="you@leaguesportsco.com"
+          placeholder="anuj@leaguesportsco.com"
           required
-          autoComplete="email"
+          autoComplete="username"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          inputMode="email"
+          enterKeyHint="next"
           className="bg-card border-border"
         />
       </div>
@@ -50,6 +61,10 @@ export function PasswordLoginForm({ initialError }: { initialError?: string }) {
           type="password"
           required
           autoComplete="current-password"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          enterKeyHint="done"
           className="bg-card border-border"
         />
       </div>
