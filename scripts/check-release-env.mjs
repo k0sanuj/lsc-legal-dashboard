@@ -9,8 +9,6 @@ const strict = process.argv.includes("--strict") || process.env.RELEASE_GATE_STR
 const requiredEnv = [
   "AUTH_SESSION_SECRET",
   "AUTH_ALLOWED_EMAILS",
-  "AUTH_APP_URL",
-  "AUTH_EMAIL_FROM",
   "DATABASE_URL",
   "DIRECT_DATABASE_URL",
   "CRON_SECRET",
@@ -24,7 +22,6 @@ const requiredEnv = [
   "FINANCE_WEBHOOK_URL",
   "FINANCE_WEBHOOK_KEY",
   "FINANCE_WEBHOOK_SECRET",
-  "RESEND_API_KEY",
 ]
 
 if (process.env.OPENSIGN_SIGNING_ENABLED === "1") {
@@ -39,7 +36,6 @@ if (process.env.OPENSIGN_SIGNING_ENABLED === "1") {
 const requiredRoutes = [
   "src/app/api/webhooks/gmail/route.ts",
   "src/app/api/webhooks/opensign/route.ts",
-  "src/app/api/auth/magic/route.ts",
   "src/app/api/auth/logout/route.ts",
   "src/app/api/cron/finance-resync/route.ts",
   "src/app/api/cron/compliance-scan/route.ts",

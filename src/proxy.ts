@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { verifySessionToken } from "@/lib/session"
 
-const PUBLIC_PATHS = ["/login", "/api/auth/magic"]
+const PUBLIC_PATHS = ["/login"]
 
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl

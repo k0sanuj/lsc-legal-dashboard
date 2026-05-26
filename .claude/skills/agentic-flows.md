@@ -63,7 +63,7 @@ until they have a class, trigger, tests, and observable output.
 
 Production needs these variables in Vercel, not committed `.env` files:
 
-- Auth/database: `AUTH_SESSION_SECRET`, `AUTH_ALLOWED_EMAILS`, `AUTH_APP_URL`, `AUTH_EMAIL_FROM`, `RESEND_API_KEY`, `DATABASE_URL`, `DIRECT_DATABASE_URL`
+- Auth/database: `AUTH_SESSION_SECRET`, `AUTH_ALLOWED_EMAILS`, `DATABASE_URL`, `DIRECT_DATABASE_URL`
 - Cron: `CRON_SECRET`
 - AI: `AI_PROVIDER=gemini`, `GEMINI_API_KEY`, optional `ANTHROPIC_API_KEY` fallback
 - S3: `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`

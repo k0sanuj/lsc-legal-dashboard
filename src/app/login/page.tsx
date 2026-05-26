@@ -1,5 +1,5 @@
 import { Scale } from "lucide-react"
-import { MagicLinkLoginForm } from "./magic-link-login-form"
+import { PasswordLoginForm } from "./password-login-form"
 
 type LoginPageProps = {
   searchParams: Promise<{ error?: string }>
@@ -8,8 +8,8 @@ type LoginPageProps = {
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams
   const initialError =
-    params.error === "invalid-link"
-      ? "That sign-in link is invalid, expired, or already used."
+    params.error === "unauthorized"
+      ? "You are not authorized to access that page."
       : undefined
 
   return (
@@ -25,7 +25,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </p>
         </div>
 
-        <MagicLinkLoginForm initialError={initialError} />
+        <PasswordLoginForm initialError={initialError} />
 
         <p className="text-center text-xs text-muted-foreground/60">
           LSC Operations Platform v3.1

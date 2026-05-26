@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "release:gate": "node scripts/release-gate.mjs",
-    "auth:provision-passwordless": "node scripts/provision-passwordless-access.mjs"
+    "auth:provision-password": "node scripts/provision-password-access.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.0",
