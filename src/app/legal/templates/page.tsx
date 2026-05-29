@@ -15,7 +15,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   FileText,
-  Plus,
   Sparkles,
   LayoutGrid,
   Hash,
@@ -24,6 +23,7 @@ import {
   Upload,
 } from "lucide-react"
 import type { DocumentCategory, Entity } from "@/generated/prisma/client"
+import { CreateTemplateDialog } from "@/components/legal/create-template-dialog"
 
 const CATEGORY_LABELS: Partial<Record<DocumentCategory, string>> = {
   SPONSORSHIP: "Sponsorship",
@@ -86,10 +86,7 @@ export default async function TemplatesPage({
                 <Upload className="size-4" />
                 Upload Agreement
               </Button>
-              <Button variant="outline">
-                <Plus className="size-4" />
-                Create Template
-              </Button>
+              <CreateTemplateDialog />
             </>
           )}
         </div>

@@ -20,7 +20,16 @@ export async function createTemplate(formData: FormData) {
 
   let variables: string[] = []
   try {
-    variables = variablesRaw ? JSON.parse(variablesRaw) : []
+    if (variablesRaw?.trim().startsWith("[")) {
+      variables = JSON.parse(variablesRaw)
+    } else {
+      variables = variablesRaw
+        ? variablesRaw
+            .split(/[\n,]/)
+            .map((variable) => variable.trim())
+            .filter(Boolean)
+        : []
+    }
   } catch {
     return { success: false, error: "Invalid variables format" }
   }
@@ -37,4 +46,11 @@ export async function createTemplate(formData: FormData) {
 
   revalidatePath("/legal/templates")
   return { success: true, templateId: template.id }
+}
+
+export async function createTemplateAction(
+  _prevState: { success?: boolean; error?: string; templateId?: string } | null,
+  formData: FormData
+) {
+  return createTemplate(formData)
 }
