@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
-import { Plus } from "lucide-react"
+import { Plus, Upload } from "lucide-react"
 import { createTemplate } from "@/actions/templates"
 import { ENTITIES } from "@/lib/constants"
 import { Button } from "@/components/ui/button"
@@ -36,11 +36,19 @@ const CATEGORIES = [
   "OTHER",
 ]
 
-export function CreateTemplateDialog() {
+type CreateTemplateDialogProps = {
+  mode?: "manual" | "upload"
+}
+
+export function CreateTemplateDialog({ mode = "manual" }: CreateTemplateDialogProps) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const isUploadMode = mode === "upload"
+  const title = isUploadMode ? "Upload Agreement" : "Create Template"
+  const actionLabel = isUploadMode ? "Save Template" : "Create Template"
+  const TriggerIcon = isUploadMode ? Upload : Plus
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -63,14 +71,16 @@ export function CreateTemplateDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button variant="outline" />}>
-        <Plus className="size-4" />
-        Create Template
+        <TriggerIcon className="size-4" />
+        {title}
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Create Template</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            Add a reusable contract template for the generation workflow.
+            {isUploadMode
+              ? "Turn an existing agreement into a reusable generation template."
+              : "Add a reusable contract template for the generation workflow."}
           </DialogDescription>
         </DialogHeader>
 
@@ -89,8 +99,8 @@ export function CreateTemplateDialog() {
               <Input
                 id="template-name"
                 name="name"
-                placeholder="Mutual NDA"
-                required
+                placeholder={isUploadMode ? "Derived from file if blank" : "Mutual NDA"}
+                required={!isUploadMode}
                 autoComplete="off"
               />
             </div>
@@ -134,15 +144,31 @@ export function CreateTemplateDialog() {
             </select>
           </div>
 
+          {isUploadMode && (
+            <div className="space-y-2">
+              <label htmlFor="template-file" className="text-sm font-medium">
+                Agreement file
+              </label>
+              <input
+                id="template-file"
+                name="file"
+                type="file"
+                required
+                accept=".pdf,.docx,.txt,.md,.markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
+                className="block h-10 w-full rounded-lg border border-input bg-background px-2.5 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary/10 file:px-3 file:py-1 file:text-xs file:font-medium file:text-primary focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+              />
+            </div>
+          )}
+
           <div className="space-y-2">
             <label htmlFor="template-variables" className="text-sm font-medium">
               Variables
             </label>
-            <Input
+            <Textarea
               id="template-variables"
               name="variables"
-              placeholder="counterparty, effective_date, governing_law"
-              autoComplete="off"
+              rows={3}
+              placeholder={"counterparty\neffective_date\ngoverning_law"}
             />
           </div>
 
@@ -153,7 +179,7 @@ export function CreateTemplateDialog() {
             <Textarea
               id="template-content"
               name="content"
-              required
+              required={!isUploadMode}
               rows={12}
               className="min-h-72 font-mono text-sm"
               placeholder="This Mutual Non-Disclosure Agreement is entered into between {{company}} and {{counterparty}}..."
@@ -165,8 +191,8 @@ export function CreateTemplateDialog() {
               Cancel
             </Button>
             <Button type="submit" disabled={isPending}>
-              <Plus className="size-4" />
-              {isPending ? "Creating..." : "Create Template"}
+              <TriggerIcon className="size-4" />
+              {isPending ? "Saving..." : actionLabel}
             </Button>
           </DialogFooter>
         </form>

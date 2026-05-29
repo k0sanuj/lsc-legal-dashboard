@@ -20,7 +20,6 @@ import {
   Hash,
   BarChart3,
   Search,
-  Upload,
 } from "lucide-react"
 import type { DocumentCategory, Entity } from "@/generated/prisma/client"
 import { CreateTemplateDialog } from "@/components/legal/create-template-dialog"
@@ -82,11 +81,8 @@ export default async function TemplatesPage({
         <div className="flex items-center gap-2">
           {isAdmin && (
             <>
-              <Button variant="outline" render={<Link href="/legal/templates?upload=1" />}>
-                <Upload className="size-4" />
-                Upload Agreement
-              </Button>
-              <CreateTemplateDialog />
+              <CreateTemplateDialog mode="upload" />
+              <CreateTemplateDialog mode="manual" />
             </>
           )}
         </div>

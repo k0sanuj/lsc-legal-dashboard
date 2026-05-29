@@ -11,6 +11,67 @@ const DEFAULT_VARIABLES = [
   { key: "value", label: "Contract Value (AED)", placeholder: "e.g. 50000" },
 ]
 
+type TemplateVariable = {
+  key: string
+  label: string
+  placeholder: string
+}
+
+function normalizeVariableKey(value: string) {
+  return value
+    .trim()
+    .replace(/^\{\{\s*/, "")
+    .replace(/\s*\}\}$/, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+}
+
+function labelFromKey(key: string) {
+  return key
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+}
+
+function normalizeTemplateVariables(value: unknown): TemplateVariable[] {
+  if (!Array.isArray(value)) return DEFAULT_VARIABLES
+
+  const variables = value
+    .map((item) => {
+      if (typeof item === "string") {
+        const key = normalizeVariableKey(item)
+        if (!key) return null
+        const label = labelFromKey(key)
+        return { key, label, placeholder: `Enter ${label.toLowerCase()}` }
+      }
+
+      if (item && typeof item === "object") {
+        const record = item as Record<string, unknown>
+        const rawKey = record.key ?? record.name ?? record.label
+        if (typeof rawKey !== "string") return null
+        const key = normalizeVariableKey(rawKey)
+        if (!key) return null
+        const label =
+          typeof record.label === "string" && record.label.trim()
+            ? record.label.trim()
+            : labelFromKey(key)
+        const placeholder =
+          typeof record.placeholder === "string" && record.placeholder.trim()
+            ? record.placeholder.trim()
+            : `Enter ${label.toLowerCase()}`
+        return { key, label, placeholder }
+      }
+
+      return null
+    })
+    .filter((item): item is TemplateVariable => Boolean(item))
+
+  return variables.length > 0 ? variables : DEFAULT_VARIABLES
+}
+
 export default async function GeneratePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireRole(["PLATFORM_ADMIN", "FINANCE_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
   const params = await searchParams
@@ -31,7 +92,7 @@ export default async function GeneratePage({ searchParams }: { searchParams: Pro
     id: t.id,
     name: t.name,
     category: t.category,
-    variables: Array.isArray(t.variables) ? (t.variables as { key: string; label: string; placeholder: string }[]) : DEFAULT_VARIABLES,
+    variables: normalizeTemplateVariables(t.variables),
   }))
 
   // If no templates in DB, provide defaults
