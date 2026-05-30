@@ -48,6 +48,7 @@ interface KanbanColumn {
 
 interface SignatureKanbanProps {
   columns: KanbanColumn[]
+  openSignConfigured?: boolean
 }
 
 const BORDER_COLOR_MAP: Record<string, string> = {
@@ -101,7 +102,13 @@ function DroppableColumn({
   )
 }
 
-function DraggableCard({ item }: { item: KanbanItem }) {
+function DraggableCard({
+  item,
+  openSignConfigured,
+}: {
+  item: KanbanItem
+  openSignConfigured: boolean
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: item.id })
 
@@ -117,7 +124,7 @@ function DraggableCard({ item }: { item: KanbanItem }) {
       {...attributes}
       className={`rounded-lg border border-border/50 bg-card p-3 cursor-grab space-y-1.5 ${isDragging ? "opacity-50 shadow-lg" : ""}`}
     >
-      <ItemContent item={item} />
+      <ItemContent item={item} openSignConfigured={openSignConfigured} />
     </div>
   )
 }
@@ -125,9 +132,11 @@ function DraggableCard({ item }: { item: KanbanItem }) {
 function ItemContent({
   item,
   showAction = true,
+  openSignConfigured = true,
 }: {
   item: KanbanItem
   showAction?: boolean
+  openSignConfigured?: boolean
 }) {
   return (
     <>
@@ -192,6 +201,7 @@ function ItemContent({
             documentId={item.documentId}
             pendingCount={item.pendingSignatureCount ?? 0}
             disabled={!item.hasFile}
+            openSignConfigured={openSignConfigured}
             compact
             stopPropagation
           />
@@ -216,7 +226,10 @@ const SIG_STATUSES = new Set<SignatureStatus>([
   "STALLED",
 ])
 
-export function SignatureKanban({ columns: initialColumns }: SignatureKanbanProps) {
+export function SignatureKanban({
+  columns: initialColumns,
+  openSignConfigured = true,
+}: SignatureKanbanProps) {
   const dndId = useId()
   const [columns, setColumns] = useState(initialColumns)
   const [activeItem, setActiveItem] = useState<KanbanItem | null>(null)
@@ -309,7 +322,11 @@ export function SignatureKanban({ columns: initialColumns }: SignatureKanbanProp
               </p>
             ) : (
               column.items.map((item) => (
-                <DraggableCard key={item.id} item={item} />
+                <DraggableCard
+                  key={item.id}
+                  item={item}
+                  openSignConfigured={openSignConfigured}
+                />
               ))
             )}
           </DroppableColumn>

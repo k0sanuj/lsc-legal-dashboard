@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth"
 import {
   ENTITIES,
 } from "@/lib/constants"
+import { getOpenSignSetupStatus } from "@/lib/opensign"
 import { formatAED, formatDate, formatRelativeDate } from "@/lib/format"
 import { LifecycleBadge } from "@/components/legal/lifecycle-badge"
 import { Badge } from "@/components/ui/badge"
@@ -35,6 +36,7 @@ import { FileDisplay } from "@/components/legal/file-display"
 import { FileUpload } from "@/components/legal/file-upload"
 import { DocumentFinancePanel } from "@/components/legal/document-finance-panel"
 import { DocumentAnalysisSummaryDrawer } from "@/components/legal/document-analysis-summary"
+import { SignaturePrepPanel } from "@/components/legal/signature-prep-panel"
 import { uploadDocumentFile, deleteDocumentFile, uploadVersionFile } from "@/actions/files"
 import type { SignatureStatus } from "@/generated/prisma/client"
 
@@ -103,6 +105,7 @@ export default async function DocumentDetailPage({
     ENTITIES.find((e) => e.value === document.entity)?.label ?? document.entity
 
   const parties = (document.parties as string[] | null) ?? []
+  const openSignStatus = getOpenSignSetupStatus()
   const pendingSignatureCount = document.signature_requests.filter(
     (sr) => sr.status === 'PENDING'
   ).length
@@ -156,6 +159,7 @@ export default async function DocumentDetailPage({
               documentId={document.id}
               pendingCount={pendingSignatureCount}
               disabled={!document.file_url}
+              openSignConfigured={openSignStatus.configured}
             />
           )}
         </div>
@@ -330,7 +334,13 @@ export default async function DocumentDetailPage({
 
         {/* Signatures Tab */}
         <TabsContent value={2}>
-          <div className="mt-4">
+          <div className="mt-4 space-y-4">
+            <SignaturePrepPanel
+              documentId={document.id}
+              hasFile={Boolean(document.file_url)}
+              signers={document.signature_requests}
+              openSignStatus={openSignStatus}
+            />
             {document.signature_requests.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card py-12">
                 <FileText className="h-8 w-8 text-muted-foreground/50 mb-2" />

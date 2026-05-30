@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth"
 import { formatAED } from "@/lib/format"
 import { ENTITIES } from "@/lib/constants"
 import { cn } from "@/lib/utils"
+import { getOpenSignSetupStatus } from "@/lib/opensign"
 import { SignatureKanban } from "@/components/legal/signature-kanban"
 import type { LifecycleStatus } from "@/generated/prisma/client"
 
@@ -38,6 +39,7 @@ export default async function SignaturesPage({
 
   const params = await searchParams
   const entityFilter = typeof params.entity === "string" ? params.entity : ""
+  const openSignStatus = getOpenSignSetupStatus()
 
   // Fetch documents in pre-signature pipeline stages
   const docWhere: Record<string, unknown> = {
@@ -221,6 +223,33 @@ export default async function SignaturesPage({
       </div>
 
       {/* Pipeline labels */}
+      <div className="rounded-xl border border-border/50 bg-card p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold">E-signature tool</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Add signers and place fields from each document detail page, then send through OpenSign.
+            </p>
+          </div>
+          <div
+            className={cn(
+              "rounded-full border px-3 py-1 text-xs font-medium",
+              openSignStatus.configured
+                ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                : "border-amber-500/20 bg-amber-500/10 text-amber-400"
+            )}
+          >
+            {openSignStatus.configured ? "OpenSign ready" : `Setup pending: ${openSignStatus.missing.length} env vars`}
+          </div>
+        </div>
+        {!openSignStatus.configured ? (
+          <p className="mt-3 text-xs text-muted-foreground">
+            Missing: {openSignStatus.missing.join(", ")}
+          </p>
+        ) : null}
+      </div>
+
+      {/* Pipeline labels */}
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
         <div className="flex items-center gap-1.5">
           <div className="h-2 w-2 rounded-full bg-slate-400" />
@@ -233,7 +262,10 @@ export default async function SignaturesPage({
         </div>
       </div>
 
-      <SignatureKanban columns={allColumns} />
+      <SignatureKanban
+        columns={allColumns}
+        openSignConfigured={openSignStatus.configured}
+      />
     </div>
   )
 }

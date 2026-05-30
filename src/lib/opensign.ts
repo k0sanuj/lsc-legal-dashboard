@@ -23,6 +23,13 @@ export interface OpenSignCreateDocumentResult {
   signingLinks: Record<string, string>
 }
 
+export interface OpenSignSetupStatus {
+  configured: boolean
+  missing: string[]
+  publicUrl: string | null
+  webhookUrl: string | null
+}
+
 function requireEnv(name: string): string {
   const value = process.env[name]
   if (!value) throw new Error(`${name} is required`)
@@ -44,6 +51,23 @@ export function getOpenSignPublicUrl(): string | null {
 
 export function getOpenSignWebhookUrl(): string | null {
   return process.env.OPENSIGN_WEBHOOK_URL ?? null
+}
+
+export function getOpenSignSetupStatus(): OpenSignSetupStatus {
+  const required = [
+    "OPENSIGN_BASE_URL",
+    "OPENSIGN_API_TOKEN",
+    "OPENSIGN_WEBHOOK_SECRET",
+    "OPENSIGN_WEBHOOK_URL",
+  ]
+  const missing = required.filter((name) => !process.env[name])
+
+  return {
+    configured: missing.length === 0,
+    missing,
+    publicUrl: getOpenSignPublicUrl(),
+    webhookUrl: getOpenSignWebhookUrl(),
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
