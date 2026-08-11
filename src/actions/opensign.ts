@@ -1,10 +1,14 @@
 "use server"
 
+import { getAppBaseUrl } from "@/lib/app-url"
 import { requireRole } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { emitLegalTrackerEvent } from "@/lib/legal-tracker"
+import { buildAgreementSentMessage } from "@/lib/legal-tracker-payloads"
 import { createOpenSignDocument, getOpenSignWebhookUrl } from "@/lib/opensign"
 import { getPresignedUrl, getS3KeyFromUrl } from "@/lib/s3"
 import { revalidatePath } from "next/cache"
+import { after } from "next/server"
 
 function getOpenSignErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -162,6 +166,42 @@ export async function createOpenSignSignatureRequest(formData: FormData) {
 
     revalidatePath(`/legal/documents/${documentId}`)
     revalidatePath("/legal/signatures")
+
+    // Legal tracker channel notice. Built here so the background callback stays
+    // minimal, and scheduled with after() so a channel outage can never fail or
+    // slow down the signature send.
+    const trackerMessage = buildAgreementSentMessage({
+      documentId,
+      title: doc.title,
+      entity: doc.entity,
+      category: doc.category,
+      counterparty: doc.counterparty,
+      value: doc.value ? doc.value.toNumber() : null,
+      currency: doc.currency,
+      signerNames: pendingSigners.map((signer) => signer.signatory_name),
+      sentByEmail: session.email,
+      appBaseUrl: getAppBaseUrl(),
+    })
+
+    after(async () => {
+      try {
+        // The notifier reports delivery failure by return value, not by
+        // throwing, so an unchecked result would be a silent miss.
+        const notified = await emitLegalTrackerEvent("agreement.sent", trackerMessage, {
+          entityType: "LegalDocument",
+          entityId: documentId,
+        })
+        if (!notified.ok) {
+          console.error(
+            `Legal tracker notification not delivered for document ${documentId} (non-blocking):`,
+            notified.error
+          )
+        }
+      } catch (err) {
+        console.error("Legal tracker notification failed (non-blocking):", err)
+      }
+    })
+
     return {
       success: true,
       providerDocumentId: result.providerDocumentId,

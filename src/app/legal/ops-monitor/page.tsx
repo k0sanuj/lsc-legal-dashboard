@@ -63,7 +63,9 @@ export default async function OpsMonitorPage() {
       take: 50,
     }),
     prisma.crossModuleEvent.findMany({
-      where: { source: "legal", processed: false },
+      // legal_tracker rows are undelivered channel notifications. They have no
+      // retry cron, so this panel is the only place an operator sees them.
+      where: { source: { in: ["legal", "legal_tracker"] }, processed: false },
       orderBy: { created_at: "desc" },
       take: 50,
     }),
@@ -277,14 +279,18 @@ export default async function OpsMonitorPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Finance Queue Failures</CardTitle>
-          <CardDescription>Unprocessed Legal to Finance events awaiting retry or replay.</CardDescription>
+          <CardTitle>Outbound Queue Failures</CardTitle>
+          <CardDescription>
+            Unprocessed outbound events. Finance events await retry or replay; legal tracker channel
+            notifications have no retry and must be resent by an operator.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Time</TableHead>
+                <TableHead>Source</TableHead>
                 <TableHead>Event</TableHead>
                 <TableHead>Entity</TableHead>
               </TableRow>
@@ -293,6 +299,7 @@ export default async function OpsMonitorPage() {
               {financeFailures.map((event) => (
                 <TableRow key={event.id}>
                   <TableCell className="font-mono text-xs">{formatDateTime(event.created_at)}</TableCell>
+                  <TableCell className="font-mono text-xs">{event.source}</TableCell>
                   <TableCell className="font-mono text-xs">{event.event_type}</TableCell>
                   <TableCell>
                     <div>{event.entity_type}</div>
