@@ -1,16 +1,27 @@
 import { Scale } from "lucide-react"
+import { MagicLinkForm } from "./magic-link-form"
 import { PasswordLoginForm } from "./password-login-form"
 
 type LoginPageProps = {
   searchParams: Promise<{ error?: string }>
 }
 
+// A Map rather than an object literal: `?error=constructor` on a plain object
+// resolves an inherited property, and a non-string error crashes the render.
+const ERROR_MESSAGES = new Map<string, string>([
+  ["unauthorized", "You are not authorized to access that page."],
+  [
+    "magic_link_invalid",
+    "That sign-in link is no longer valid. Request a new one below.",
+  ],
+])
+
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams
-  const initialError =
-    params.error === "unauthorized"
-      ? "You are not authorized to access that page."
-      : undefined
+  const errorCode = typeof params.error === "string" ? params.error : undefined
+  const initialError = errorCode
+    ? (ERROR_MESSAGES.get(errorCode) ?? "Sign in could not be completed.")
+    : undefined
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
@@ -25,7 +36,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </p>
         </div>
 
-        <PasswordLoginForm initialError={initialError} />
+        <MagicLinkForm initialError={initialError} />
+
+        <div className="border-t border-border/50 pt-4">
+          <PasswordLoginForm />
+        </div>
 
         <p className="text-center text-xs text-muted-foreground/60">
           LSC Operations Platform v3.1

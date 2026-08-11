@@ -19,13 +19,21 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Skip cron + webhook endpoints — they authenticate via bearer token /
+  // Skip cron + webhook endpoints; they authenticate via bearer token /
   // shared secret, not user sessions. Without this, Vercel cron invocations
   // get redirected to /login and the handler never runs.
   if (
     pathname.startsWith("/api/cron/") ||
     pathname.startsWith("/api/webhooks/")
   ) {
+    return NextResponse.next()
+  }
+
+  // Skip the magic-link callback; it authenticates with a single-use token in
+  // the query string and is the request that creates the session. Without this,
+  // the visitor arrives with no cookie, gets redirected to /login, and no magic
+  // link can ever work.
+  if (pathname.startsWith("/api/auth/magic")) {
     return NextResponse.next()
   }
 

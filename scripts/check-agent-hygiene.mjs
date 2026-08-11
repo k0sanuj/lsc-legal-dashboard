@@ -81,16 +81,33 @@ if (process.env.OPENSIGN_SIGNING_ENABLED === "1") {
   }
 }
 
+if (process.env.MAGIC_LINK_LOGIN_ENABLED === "1") {
+  for (const name of ["MAILGUN_DOMAIN", "MAILGUN_API_KEY", "MAILGUN_SENDER", "AUTH_ALLOWED_EMAILS", "AUTH_APP_URL"]) {
+    if (!process.env[name]) errors.push(`${name} is required when MAGIC_LINK_LOGIN_ENABLED=1`)
+  }
+}
+
+// Schema reaches production by hand-running the ops/sql patches, so this check is
+// the only thing between a deploy and code querying tables the database lacks.
+// AuthMagicLinkToken is here because login itself now depends on it.
+const REQUIRED_TABLES = [
+  "DocumentAnalysis",
+  "WebhookEventLog",
+  "CrossModuleEvent",
+  "AgentActivityLog",
+  "AuthMagicLinkToken",
+]
+
 if (process.env.DATABASE_URL) {
   const client = new Client({ connectionString: process.env.DATABASE_URL })
   try {
     await client.connect()
     const result = await client.query(
       `select table_name from information_schema.tables where table_schema = 'public' and table_name = any($1)`,
-      [["DocumentAnalysis", "WebhookEventLog", "CrossModuleEvent", "AgentActivityLog"]]
+      [REQUIRED_TABLES]
     )
     const found = new Set(result.rows.map((row) => row.table_name))
-    for (const table of ["DocumentAnalysis", "WebhookEventLog", "CrossModuleEvent", "AgentActivityLog"]) {
+    for (const table of REQUIRED_TABLES) {
       if (!found.has(table)) errors.push(`Runtime database is missing required table: ${table}`)
     }
   } catch (error) {

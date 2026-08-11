@@ -1,7 +1,7 @@
 const DEFAULT_ALLOWED_EMAILS = [
-  "anuj@leaguesportsco.com",
-  "ak@leaguesportsco.com",
-  "adi@leaguesportsco.com",
+  "anuj@futureofsports.io",
+  "ak@futureofsports.io",
+  "adi@futureofsports.io",
 ]
 
 export function normalizeLoginEmail(email: string): string {

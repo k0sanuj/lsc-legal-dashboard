@@ -1,3 +1,9 @@
+// LEGACY. Superseded by scripts/provision-magic-link-access.mjs. Login is now
+// magic link, restricted to the @futureofsports.io addresses in
+// src/lib/auth-allowlist.ts. The addresses below are no longer allowlisted, so
+// this script can only produce accounts that cannot sign in, and its
+// --deactivate-others would switch off the accounts that can. It refuses to run
+// unless its own users are allowlisted. Delete it with the password fallback.
 import { randomBytes } from "node:crypto"
 import { config } from "dotenv"
 import pg from "pg"
@@ -31,7 +37,33 @@ function generatePassword() {
   return randomBytes(24).toString("base64url")
 }
 
+/**
+ * Refuse to run when the addresses hardcoded above are not in the live
+ * allowlist. Otherwise this script silently creates or reactivates accounts that
+ * cannot sign in, and --deactivate-others would disable the ones that can.
+ */
+function assertUsersAreAllowlisted() {
+  const configured = process.env.AUTH_ALLOWED_EMAILS?.trim()
+  if (!configured) return
+
+  const allowed = new Set(
+    configured.split(",").map((email) => email.trim().toLowerCase()).filter(Boolean)
+  )
+  const orphaned = users.filter((user) => !allowed.has(user.email.toLowerCase()))
+  if (orphaned.length === 0) return
+
+  throw new Error(
+    [
+      "This legacy script targets addresses that AUTH_ALLOWED_EMAILS does not permit:",
+      `  ${orphaned.map((user) => user.email).join(", ")}`,
+      "Login is magic link now. Use scripts/provision-magic-link-access.mjs instead.",
+    ].join("\n")
+  )
+}
+
 async function main() {
+  assertUsersAreAllowlisted()
+
   if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL is required")
   }
