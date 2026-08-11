@@ -66,6 +66,36 @@ enum SignatureStatus {
   STALLED
 }
 
+enum RedlineStatus {
+  DRAFT
+  INTERNAL_REVIEW
+  SENT_TO_COUNTERPARTY
+  COUNTERPARTY_RESPONDED
+  ACCEPTED
+  REJECTED
+  SUPERSEDED
+}
+
+enum RedlineChangeType {
+  INSERTION
+  DELETION
+  REPLACEMENT
+  COMMENT
+}
+
+enum RedlineChangeStatus {
+  OPEN
+  ACCEPTED
+  REJECTED
+  COUNTERED
+  WITHDRAWN
+}
+
+enum RedlineParty {
+  US
+  COUNTERPARTY
+}
+
 enum Priority {
   CRITICAL
   HIGH
@@ -339,6 +369,10 @@ model LegalDocument {
   finance_post_status     String? // "synced" | "pending" | "failed"
   last_finance_post_error String?
 
+  last_tracker_notified_at  DateTime?
+  tracker_notify_status     String?
+  last_tracker_notify_error String?
+
   created_at       DateTime         @default(now())
   updated_at       DateTime         @updatedAt
 
@@ -355,6 +389,7 @@ model LegalDocument {
   comments           DocumentComment[]
   webhook_events     WebhookEventLog[]
   analyses           DocumentAnalysis[]
+  redlines           Redline[]
 
   @@index([entity, lifecycle_status])
   @@index([expiry_date])
@@ -375,6 +410,7 @@ model DocumentVersion {
 
   document LegalDocument @relation(fields: [document_id], references: [id], onDelete: Cascade)
   analyses DocumentAnalysis[]
+  redlines Redline[]
 
   @@index([document_id, version_number])
 }
@@ -475,6 +511,76 @@ model WebhookEventLog {
   @@index([provider, event_type])
   @@index([signature_request_id])
   @@index([document_id])
+}
+
+// ─── Redlines ────────────────────────────────────────────────────────────────
+
+model Redline {
+  id            String        @id @default(uuid())
+  document_id   String
+  version_id    String?
+  title         String
+  round         Int           @default(1)
+  status        RedlineStatus @default(DRAFT)
+  counterparty  String?
+  base_text     String
+  proposed_text String
+  summary       String?
+  our_position  String?
+  created_by    String
+  assigned_to   String?
+  sent_at       DateTime?
+  responded_at  DateTime?
+  resolved_at   DateTime?
+  created_at    DateTime      @default(now())
+  updated_at    DateTime      @updatedAt
+
+  document LegalDocument    @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  version  DocumentVersion? @relation(fields: [version_id], references: [id], onDelete: SetNull)
+  changes  RedlineChange[]
+  events   RedlineEvent[]
+
+  @@index([document_id, round])
+  @@index([status])
+  @@index([assigned_to])
+  @@index([version_id])
+}
+
+model RedlineChange {
+  id            String              @id @default(uuid())
+  redline_id    String
+  position      Int                 @default(0)
+  clause_ref    String?
+  change_type   RedlineChangeType
+  original_text String?
+  proposed_text String?
+  rationale     String?
+  risk_level    String?
+  status        RedlineChangeStatus @default(OPEN)
+  raised_by     RedlineParty        @default(US)
+  resolved_by   String?
+  resolved_at   DateTime?
+  created_at    DateTime            @default(now())
+  updated_at    DateTime            @updatedAt
+
+  redline Redline @relation(fields: [redline_id], references: [id], onDelete: Cascade)
+
+  @@index([redline_id, position])
+  @@index([status])
+}
+
+model RedlineEvent {
+  id          String         @id @default(uuid())
+  redline_id  String
+  from_status RedlineStatus?
+  to_status   RedlineStatus
+  actor       String
+  notes       String?
+  created_at  DateTime       @default(now())
+
+  redline Redline @relation(fields: [redline_id], references: [id], onDelete: Cascade)
+
+  @@index([redline_id, created_at])
 }
 
 // ─── Templates ───────────────────────────────────────────────────────────────
