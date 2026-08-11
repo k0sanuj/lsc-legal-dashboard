@@ -37,6 +37,7 @@ import { FileUpload } from "@/components/legal/file-upload"
 import { DocumentFinancePanel } from "@/components/legal/document-finance-panel"
 import { DocumentAnalysisSummaryDrawer } from "@/components/legal/document-analysis-summary"
 import { SignaturePrepPanel } from "@/components/legal/signature-prep-panel"
+import { DocumentRedlinesPanel } from "@/components/legal/document-redlines-panel"
 import { uploadDocumentFile, deleteDocumentFile, uploadVersionFile } from "@/actions/files"
 import type { SignatureStatus } from "@/generated/prisma/client"
 
@@ -61,7 +62,15 @@ export default async function DocumentDetailPage({
   params: Promise<{ id: string }>
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  await requireSession()
+  const session = await requireSession()
+
+  // This page is ALL_ROLES, but /legal/redlines is restricted to the legal write
+  // roles. Negotiation posture (rounds in flight, counterparty, open items) must
+  // not leak to an external auditor or a team member through the tab here.
+  const canSeeRedlines =
+    session.role === "PLATFORM_ADMIN" ||
+    session.role === "LEGAL_ADMIN" ||
+    session.role === "OPS_ADMIN"
 
   const { id } = await params
   const query = await searchParams
@@ -92,6 +101,19 @@ export default async function DocumentDetailPage({
           tranche_label: true,
           tranche_amount_usd: true,
           finance_post_status: true,
+        },
+      },
+      redlines: {
+        orderBy: { round: "desc" },
+        select: {
+          id: true,
+          title: true,
+          round: true,
+          status: true,
+          counterparty: true,
+          updated_at: true,
+          _count: { select: { changes: true } },
+          changes: { where: { status: "OPEN" }, select: { id: true } },
         },
       },
     },
@@ -174,6 +196,7 @@ export default async function DocumentDetailPage({
           <TabsTrigger value={3}>Comments</TabsTrigger>
           <TabsTrigger value={4}>Audit Trail</TabsTrigger>
           <TabsTrigger value={5}>Finance</TabsTrigger>
+          {canSeeRedlines ? <TabsTrigger value={6}>Redlines</TabsTrigger> : null}
         </TabsList>
 
         {/* Overview Tab */}
@@ -486,6 +509,35 @@ export default async function DocumentDetailPage({
             }))}
           />
         </TabsContent>
+
+        {/* Redlines Tab */}
+        {canSeeRedlines ? (
+          <TabsContent value={6}>
+            <div className="mt-4">
+              <DocumentRedlinesPanel
+                documentId={document.id}
+                documentTitle={document.title}
+                counterparty={document.counterparty}
+                versions={document.versions.map((v) => ({
+                  id: v.id,
+                  version_number: v.version_number,
+                  created_at: v.created_at,
+                }))}
+                hasFile={Boolean(document.file_url)}
+                redlines={document.redlines.map((r) => ({
+                  id: r.id,
+                  title: r.title,
+                  round: r.round,
+                  status: r.status,
+                  counterparty: r.counterparty,
+                  updated_at: r.updated_at,
+                  openChangeCount: r.changes.length,
+                  totalChangeCount: r._count.changes,
+                }))}
+              />
+            </div>
+          </TabsContent>
+        ) : null}
       </Tabs>
     </div>
   )

@@ -46,6 +46,20 @@ until they have a class, trigger, tests, and observable output.
   - Uploads the current PDF to OpenSign, sends pending signers, and stores OpenSign provider IDs/signing links on Legal rows.
   - Optional widget JSON can be supplied per signer; otherwise the action sends default signature/date widgets on page 1.
   - Transitions the document to `AWAITING_SIGNATURE` and marks pending signers as `SENT`.
+  - After the transaction commits, schedules a legal tracker channel notification with `after()`. A channel outage must never fail or slow a signature send.
+- `src/lib/legal-tracker.ts` + `src/lib/legal-tracker-payloads.ts`
+  - Outbound channel notifier for the legal tracker channel that Aditya Mishra watches. Transport and pure payload builders are split the same way `finance-webhook.ts` and `finance-payloads.ts` are.
+  - Driver is chosen by `LEGAL_TRACKER_CHANNEL_PROVIDER`: `slack`, `google_chat`, `mailgun`, or `none`. Unset auto-detects from whichever credentials exist.
+  - Slack answers HTTP 200 with `{ ok: false, error }` on failure, so the body is parsed rather than trusting the status code.
+  - Never throws. Returns `{ ok, provider, error? }` and returns `ok: false` when unconfigured.
+  - Writes a `CrossModuleEvent` row with source `legal_tracker` before posting. Only the `agreement.sent` path also mirrors the outcome onto `LegalDocument.last_tracker_notified_at` / `tracker_notify_status` / `last_tracker_notify_error`; `redline.sent` carries `entity_type` `Redline` and has no document to mirror onto.
+  - Delivery failure arrives as a return value, never as a thrown error, so every call site must check `result.ok` rather than relying on try/catch.
+  - No retry cron consumes source `legal_tracker`. An undelivered notification shows up in the Outbound Queue Failures panel on `/legal/ops-monitor` (which selects sources `legal` and `legal_tracker`) and must be resent by an operator. Add a cron or extend the finance-resync whitelist if that changes.
+  - `LEGAL_TRACKER_MENTION` and `LEGAL_TRACKER_EMAIL_TO` are env-only. Never hardcode a person's Slack id or email.
+- `src/actions/redlines.ts`
+  - Redline lifecycle for the redline editor and tracker. Every action requires `PLATFORM_ADMIN`, `LEGAL_ADMIN` or `OPS_ADMIN`.
+  - `createRedlineFromDocument` extracts text from the stored S3 file (or a chosen `DocumentVersion`), stores it as both `base_text` and `proposed_text`, and opens a new round.
+  - `transitionRedline` writes the status plus a `RedlineEvent` in one transaction, and on `SENT_TO_COUNTERPARTY` notifies the legal tracker channel inside `after()`.
 - `src/app/api/webhooks/opensign/route.ts`
   - Verifies `x-webhook-signature` / `x-opensign-signature` / `x-signature` with `OPENSIGN_WEBHOOK_SECRET` using HMAC-SHA256.
   - Dedupes callbacks with `WebhookEventLog.event_hash`.
@@ -72,6 +86,7 @@ Production needs these variables in Vercel, not committed `.env` files:
 - Gmail: `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_CLOUD_PROJECT_ID`
 - Gmail webhook: `GMAIL_WEBHOOK_SECRET`, `GMAIL_WATCH_MAILBOXES`
 - Finance webhook: `FINANCE_WEBHOOK_URL`, `FINANCE_WEBHOOK_KEY`, `FINANCE_WEBHOOK_SECRET`
+- Legal tracker channel: `LEGAL_TRACKER_CHANNEL_PROVIDER` plus the driver's own vars. See `ops/legal-tracker-channel.md`
 
 ## Legal -> Finance Contract Events
 

@@ -58,6 +58,8 @@ export const PAGE_PERMISSIONS: Record<string, UserRole[]> = {
   "/legal/tracker": ADMIN_ROLES,
   "/legal/payment-cycles": ADMIN_ROLES,
   "/legal/documents/review": LEGAL_WRITE_ROLES,
+  "/legal/redlines": LEGAL_WRITE_ROLES,
+  "/legal/redlines/[id]": LEGAL_WRITE_ROLES,
   // New sections
   "/legal/litigation": ADMIN_ROLES,
   "/legal/litigation/[id]": ADMIN_ROLES,
@@ -104,6 +106,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Agreements", href: "/legal/agreements", icon: "Handshake", group: "Agreements" },
   { label: "Documents", href: "/legal/documents", icon: "FileText", group: "Agreements" },
   { label: "Review Queue", href: "/legal/documents/review", icon: "MessageSquare", group: "Agreements" },
+  { label: "Redlines", href: "/legal/redlines", icon: "FileDiff", group: "Agreements" },
   { label: "Signatures", href: "/legal/signatures", icon: "PenTool", group: "Agreements" },
   { label: "Templates", href: "/legal/templates", icon: "LayoutTemplate", group: "Agreements" },
   { label: "AI Generator", href: "/legal/generate", icon: "Sparkles", group: "Agreements" },
