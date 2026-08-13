@@ -33,6 +33,23 @@ if (process.env.OPENSIGN_SIGNING_ENABLED === "1") {
   )
 }
 
+if (process.env.LEGAL_TRACKER_NOTIFY_ENABLED === "1") {
+  const trackerProvider = (process.env.LEGAL_TRACKER_CHANNEL_PROVIDER ?? "").toLowerCase()
+  requiredEnv.push("LEGAL_TRACKER_CHANNEL_PROVIDER")
+  if (trackerProvider === "slack") {
+    requiredEnv.push("LEGAL_TRACKER_MENTION")
+    if (process.env.LEGAL_TRACKER_WEBHOOK_URL) {
+      requiredEnv.push("LEGAL_TRACKER_WEBHOOK_URL")
+    } else {
+      requiredEnv.push("LEGAL_TRACKER_SLACK_BOT_TOKEN", "LEGAL_TRACKER_SLACK_CHANNEL")
+    }
+  } else if (trackerProvider === "google_chat") {
+    requiredEnv.push("LEGAL_TRACKER_WEBHOOK_URL", "LEGAL_TRACKER_MENTION")
+  } else if (trackerProvider === "mailgun") {
+    requiredEnv.push("MAILGUN_DOMAIN", "MAILGUN_API_KEY", "MAILGUN_SENDER", "LEGAL_TRACKER_EMAIL_TO")
+  }
+}
+
 if (process.env.MAGIC_LINK_LOGIN_ENABLED === "1") {
   requiredEnv.push(
     "MAILGUN_DOMAIN",

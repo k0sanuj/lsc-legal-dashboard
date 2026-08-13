@@ -1,0 +1,10 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$HOST} {
+	handle_path /api/* {
+		reverse_proxy server:8080
+	}
+	reverse_proxy client:3000
+}

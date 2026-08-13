@@ -9,6 +9,14 @@ import mammoth from "mammoth"
 
 const MAX_CHARS = 12000 // trimmed further at the LLM boundary
 
+/**
+ * Callers that keep the text for a human to read, rather than feeding it to a
+ * model, pass their own ceiling. The redline editor does this: truncating an
+ * agreement at 12000 characters would silently drop most clauses from the
+ * document a lawyer is marking up.
+ */
+export const EXTRACT_TEXT_DEFAULT_MAX_CHARS = MAX_CHARS
+
 async function bufferFrom(file: File): Promise<Buffer> {
   return Buffer.from(await file.arrayBuffer())
 }
@@ -37,7 +45,10 @@ async function extractPlainText(file: File): Promise<string> {
   return (await file.text()).trim()
 }
 
-export async function extractTextFromFile(file: File): Promise<string> {
+export async function extractTextFromFile(
+  file: File,
+  maxChars: number = MAX_CHARS
+): Promise<string> {
   const name = file.name.toLowerCase()
   const type = file.type.toLowerCase()
 
@@ -58,7 +69,7 @@ export async function extractTextFromFile(file: File): Promise<string> {
     ) {
       text = await extractPlainText(file)
     }
-    return text.slice(0, MAX_CHARS)
+    return text.slice(0, maxChars)
   } catch (err) {
     console.error("extractTextFromFile failed:", err)
     return ""

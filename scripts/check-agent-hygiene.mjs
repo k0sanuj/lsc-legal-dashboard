@@ -81,21 +81,53 @@ if (process.env.OPENSIGN_SIGNING_ENABLED === "1") {
   }
 }
 
+if (process.env.LEGAL_TRACKER_NOTIFY_ENABLED === "1") {
+  const trackerProvider = (process.env.LEGAL_TRACKER_CHANNEL_PROVIDER ?? "").toLowerCase()
+  const trackerEnv = ["LEGAL_TRACKER_CHANNEL_PROVIDER"]
+  if (trackerProvider === "slack") {
+    trackerEnv.push("LEGAL_TRACKER_MENTION")
+    if (process.env.LEGAL_TRACKER_WEBHOOK_URL) {
+      trackerEnv.push("LEGAL_TRACKER_WEBHOOK_URL")
+    } else {
+      trackerEnv.push("LEGAL_TRACKER_SLACK_BOT_TOKEN", "LEGAL_TRACKER_SLACK_CHANNEL")
+    }
+  } else if (trackerProvider === "google_chat") {
+    trackerEnv.push("LEGAL_TRACKER_WEBHOOK_URL", "LEGAL_TRACKER_MENTION")
+  } else if (trackerProvider === "mailgun") {
+    trackerEnv.push("MAILGUN_DOMAIN", "MAILGUN_API_KEY", "MAILGUN_SENDER", "LEGAL_TRACKER_EMAIL_TO")
+  } else {
+    errors.push("LEGAL_TRACKER_CHANNEL_PROVIDER must be slack, google_chat, or mailgun when LEGAL_TRACKER_NOTIFY_ENABLED=1")
+  }
+  for (const name of trackerEnv) {
+    if (!process.env[name]) errors.push(`${name} is required when LEGAL_TRACKER_NOTIFY_ENABLED=1`)
+  }
+}
+
 if (process.env.MAGIC_LINK_LOGIN_ENABLED === "1") {
   for (const name of ["MAILGUN_DOMAIN", "MAILGUN_API_KEY", "MAILGUN_SENDER", "AUTH_ALLOWED_EMAILS", "AUTH_APP_URL"]) {
     if (!process.env[name]) errors.push(`${name} is required when MAGIC_LINK_LOGIN_ENABLED=1`)
   }
 }
 
-// Schema reaches production by hand-running the ops/sql patches, so this check is
-// the only thing between a deploy and code querying tables the database lacks.
-// AuthMagicLinkToken is here because login itself now depends on it.
+// Schema reaches production by hand-running the ops/sql patches, so this is the
+// only thing standing between a deploy and code that queries columns the live
+// database does not have. Every table and column a patch adds belongs here.
+// AuthMagicLinkToken is included because login itself now depends on it.
 const REQUIRED_TABLES = [
   "DocumentAnalysis",
   "WebhookEventLog",
   "CrossModuleEvent",
   "AgentActivityLog",
+  "Redline",
+  "RedlineChange",
+  "RedlineEvent",
   "AuthMagicLinkToken",
+]
+
+const REQUIRED_COLUMNS = [
+  ["LegalDocument", "last_tracker_notified_at"],
+  ["LegalDocument", "tracker_notify_status"],
+  ["LegalDocument", "last_tracker_notify_error"],
 ]
 
 if (process.env.DATABASE_URL) {
@@ -109,6 +141,20 @@ if (process.env.DATABASE_URL) {
     const found = new Set(result.rows.map((row) => row.table_name))
     for (const table of REQUIRED_TABLES) {
       if (!found.has(table)) errors.push(`Runtime database is missing required table: ${table}`)
+    }
+
+    const columnResult = await client.query(
+      `select table_name, column_name from information_schema.columns
+       where table_schema = 'public' and table_name = any($1)`,
+      [[...new Set(REQUIRED_COLUMNS.map(([table]) => table))]]
+    )
+    const foundColumns = new Set(
+      columnResult.rows.map((row) => `${row.table_name}.${row.column_name}`)
+    )
+    for (const [table, column] of REQUIRED_COLUMNS) {
+      if (!foundColumns.has(`${table}.${column}`)) {
+        errors.push(`Runtime database is missing required column: ${table}.${column}`)
+      }
     }
   } catch (error) {
     errors.push(`Could not verify runtime database agent tables: ${error instanceof Error ? error.message : String(error)}`)
