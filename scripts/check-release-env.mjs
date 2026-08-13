@@ -50,15 +50,28 @@ if (process.env.LEGAL_TRACKER_NOTIFY_ENABLED === "1") {
   }
 }
 
+if (process.env.MAGIC_LINK_LOGIN_ENABLED === "1") {
+  requiredEnv.push(
+    "MAILGUN_DOMAIN",
+    "MAILGUN_API_KEY",
+    "MAILGUN_SENDER",
+    "AUTH_ALLOWED_EMAILS",
+    // Server-side, so it can be changed without a rebuild. A NEXT_PUBLIC_ value
+    // would be frozen into the bundle at build time.
+    "AUTH_APP_URL"
+  )
+}
+
 const requiredRoutes = [
   "src/app/api/webhooks/gmail/route.ts",
   "src/app/api/webhooks/opensign/route.ts",
   "src/app/api/auth/logout/route.ts",
+  "src/app/api/auth/magic/route.ts",
   "src/app/api/cron/finance-resync/route.ts",
   "src/app/api/cron/compliance-scan/route.ts",
 ]
 
-const missingEnv = requiredEnv.filter((name) => !process.env[name])
+const missingEnv = Array.from(new Set(requiredEnv)).filter((name) => !process.env[name])
 const missingRoutes = requiredRoutes.filter((path) => !existsSync(path))
 
 if (missingEnv.length > 0) {

@@ -1,6 +1,14 @@
 "use client"
 
-import { useActionState } from "react"
+/**
+ * DELIBERATE FALLBACK. Magic link is the primary login path; this secondary
+ * password form stays only until magic-link delivery is verified in production,
+ * because Mailgun credentials are not set there yet. To retire it, delete this
+ * file, drop loginWithPasswordAction from ./actions.ts and authenticateWithPassword
+ * from src/lib/auth.ts, then remove PasswordLoginForm from ./page.tsx.
+ */
+
+import { useActionState, useState } from "react"
 import { LockKeyhole } from "lucide-react"
 import { loginWithPasswordAction } from "./actions"
 import { Button } from "@/components/ui/button"
@@ -15,7 +23,23 @@ export function PasswordLoginForm({ initialError }: { initialError?: string }) {
     loginWithPasswordAction,
     null
   )
+  const [isRevealed, setIsRevealed] = useState(false)
   const error = state?.error ?? initialError
+
+  if (!isRevealed) {
+    return (
+      <div className="text-center">
+        <Button
+          type="button"
+          variant="link"
+          size="sm"
+          onClick={() => setIsRevealed(true)}
+        >
+          Sign in with a password instead
+        </Button>
+      </div>
+    )
+  }
 
   return (
     <form
@@ -39,7 +63,7 @@ export function PasswordLoginForm({ initialError }: { initialError?: string }) {
           id="email"
           name="email"
           type="email"
-          placeholder="anuj@leaguesportsco.com"
+          placeholder="anuj@futureofsports.io"
           required
           autoComplete="username"
           autoCapitalize="none"

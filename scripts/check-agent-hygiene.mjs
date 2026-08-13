@@ -103,9 +103,16 @@ if (process.env.LEGAL_TRACKER_NOTIFY_ENABLED === "1") {
   }
 }
 
+if (process.env.MAGIC_LINK_LOGIN_ENABLED === "1") {
+  for (const name of ["MAILGUN_DOMAIN", "MAILGUN_API_KEY", "MAILGUN_SENDER", "AUTH_ALLOWED_EMAILS", "AUTH_APP_URL"]) {
+    if (!process.env[name]) errors.push(`${name} is required when MAGIC_LINK_LOGIN_ENABLED=1`)
+  }
+}
+
 // Schema reaches production by hand-running the ops/sql patches, so this is the
 // only thing standing between a deploy and code that queries columns the live
 // database does not have. Every table and column a patch adds belongs here.
+// AuthMagicLinkToken is included because login itself now depends on it.
 const REQUIRED_TABLES = [
   "DocumentAnalysis",
   "WebhookEventLog",
@@ -114,6 +121,7 @@ const REQUIRED_TABLES = [
   "Redline",
   "RedlineChange",
   "RedlineEvent",
+  "AuthMagicLinkToken",
 ]
 
 const REQUIRED_COLUMNS = [
