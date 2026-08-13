@@ -52,50 +52,40 @@ deployment.
 ## Provision the users
 
 ```bash
-node scripts/provision-magic-link-access.mjs
+npm run auth:provision-magic-link
 node scripts/provision-magic-link-access.mjs --deactivate-others
-node scripts/provision-magic-link-access.mjs --with-break-glass-password
 ```
 
 The script is idempotent. It upserts the three addresses as `PLATFORM_ADMIN` with
-`is_active = true`. `AppUser.password_hash` is NOT NULL in the database, so new
-rows get a bcrypt hash of a random secret that is never printed and never stored;
-it cannot be used to sign in. Existing rows keep the hash they already have.
-`--deactivate-others` sets `is_active = false` on every other `AppUser` row.
-
-`--with-break-glass-password` sets a real, freshly generated password on each of
-the three accounts and prints it once, and only when stdout is a terminal so the
-values cannot land in a pipe or a CI log. Use it only during the window before
-magic-link delivery is proven, because until then these accounts have no other way
-in. Move the values into a password manager and close the terminal afterwards.
-
-`--clear-break-glass-password` is how you retire them: it overwrites all three
-hashes with unusable random ones. A flagless re-run does **not** do this, by
-design, because the upsert preserves existing hashes so the legacy
-`@leaguesportsco.com` accounts keep the passwords they still need during rollout.
+`is_active = true`. `AppUser.password_hash` is NOT NULL in the database, so rows
+get a bcrypt hash of a random secret that is never printed and never stored; no
+password login path exists, so the column is inert. `--deactivate-others` sets
+`is_active = false` on every other `AppUser` row.
 
 ## Rollout order, which matters
 
+Password login is REMOVED. The emailed link is the only way in, which makes
+Mailgun delivery a hard dependency of login itself: if mail cannot be sent,
+nobody can start a new session, and sessions last 30 days, so an unnoticed mail
+outage eventually locks everyone out as sessions age out.
+
 Narrowing `AUTH_ALLOWED_EMAILS` is the step that locks people out, because
 `verifySessionToken` in `src/lib/session.ts` re-checks the allowlist on every
-request. Doing it too early logs out the current `@leaguesportsco.com` admins and
-leaves nobody able to sign in, since the new accounts depend on email that does not
-work yet. Run these in order:
+request. Run these in order:
 
-1. Set `MAILGUN_DOMAIN`, `MAILGUN_API_KEY` and `MAILGUN_SENDER` in Vercel.
-2. Deploy this branch. Nothing changes for existing users yet, because
-   `AUTH_ALLOWED_EMAILS` in Vercel still lists the old addresses and it overrides
-   the defaults in `src/lib/auth-allowlist.ts`.
-3. Provision the three accounts:
-   `node scripts/provision-magic-link-access.mjs --with-break-glass-password`.
-4. Temporarily widen `AUTH_ALLOWED_EMAILS` to the old three plus the new three, and
-   confirm a magic link actually arrives and signs you in as
-   `anuj@futureofsports.io`.
-5. Only then narrow `AUTH_ALLOWED_EMAILS` to the three `@futureofsports.io`
+1. Set `MAILGUN_DOMAIN`, `MAILGUN_API_KEY` and `MAILGUN_SENDER` in the hosting
+   env, plus `AUTH_APP_URL`.
+2. Provision the three accounts: `npm run auth:provision-magic-link`.
+3. Temporarily widen `AUTH_ALLOWED_EMAILS` to the old three plus the new three,
+   and confirm a magic link actually arrives and signs you in as
+   `anuj@futureofsports.io`. Keep a signed-in session open in another browser
+   while you do the next step.
+4. Only then narrow `AUTH_ALLOWED_EMAILS` to the three `@futureofsports.io`
    addresses, and run the script again with `--deactivate-others`.
-6. Run `node scripts/provision-magic-link-access.mjs --clear-break-glass-password`
-   to retire the temporary passwords, then retire the password fallback as
-   described below.
+
+If you are ever locked out entirely (mail down, no live session), the recovery is
+`AUTH_ALLOWED_EMAILS` plus Mailgun repair at the hosting level; there is no
+in-app back door, deliberately.
 
 No schema change is needed. `AuthMagicLinkToken` already exists in
 `prisma/schema.prisma` and in the production database via
@@ -138,29 +128,17 @@ No schema change is needed. `AuthMagicLinkToken` already exists in
   bypass is required: the callback is the request that creates the session, so
   without it every link would redirect to `/login`.
 
-## Password fallback, and how to remove it
+## Password login is gone
 
-Production has no Mailgun credentials yet. If login were magic-link-only before
-delivery is verified, nobody could sign in at all. So `/login` keeps the password
-form as a clearly secondary path behind a "Sign in with a password instead"
-toggle. It works exactly as it did before.
+The password fallback was removed on 2026-08-13 (form, action,
+`authenticateWithPassword`, `src/lib/password.ts`, the legacy provisioning
+script, and the break-glass password mode, which only made sense while a
+password form existed). `AppUser.password_hash` remains as a NOT NULL column
+holding unusable random hashes; dropping it is a schema change for another day.
 
-Note that the three `@futureofsports.io` rows created by
-`scripts/provision-magic-link-access.mjs` have unusable password hashes by default,
-so the fallback helps only accounts that already have a real password set. Either
-configure Mailgun and verify delivery before narrowing the allowlist, or provision
-with `--with-break-glass-password` first so the new accounts have a way in.
-
-To retire the fallback once magic-link delivery is verified in production:
-
-1. Delete `src/app/login/password-login-form.tsx`.
-2. Remove `PasswordLoginForm` from `src/app/login/page.tsx`.
-3. Remove `loginWithPasswordAction` from `src/app/login/actions.ts`.
-4. Remove `authenticateWithPassword` from `src/lib/auth.ts`, keeping
-   `establishSessionForUser`.
-5. Optionally delete `src/lib/password.ts` and
-   `scripts/provision-password-access.mjs` once no other caller remains.
-6. Run `npm run release:gate`.
+Sessions created by a magic-link sign-in last 30 days
+(`SESSION_DURATION_MS` in `src/lib/session.ts`). Existing cookies keep the
+expiry they were issued with.
 
 ## Verify end to end
 

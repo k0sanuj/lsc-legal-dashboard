@@ -1,8 +1,6 @@
 "use server"
 
 import { headers } from "next/headers"
-import { redirect } from "next/navigation"
-import { authenticateWithPassword } from "@/lib/auth"
 import {
   MAGIC_LINK_TTL_MINUTES,
   firstForwardedIp,
@@ -41,28 +39,4 @@ export async function requestMagicLinkAction(
   }
 
   return { success: true, message: MAGIC_LINK_NEUTRAL_MESSAGE }
-}
-
-/**
- * DELIBERATE FALLBACK. Magic link is the primary path; this action stays only
- * until magic-link delivery is verified in production. To retire it, delete
- * src/app/login/password-login-form.tsx and this action.
- */
-export async function loginWithPasswordAction(
-  _prevState: { error?: string } | null,
-  formData: FormData
-) {
-  const email = formData.get("email") as string | null
-  const password = formData.get("password") as string | null
-
-  if (!email || !password) {
-    return { error: "Email and password are required" }
-  }
-
-  const result = await authenticateWithPassword(email, password)
-  if (!result.success) {
-    return { error: result.error ?? "Invalid email or password" }
-  }
-
-  redirect("/legal")
 }

@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "release:gate": "node scripts/release-gate.mjs",
-    "auth:provision-password": "node scripts/provision-password-access.mjs"
+    "auth:provision-magic-link": "node scripts/provision-magic-link-access.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.0",
