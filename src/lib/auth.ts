@@ -1,13 +1,11 @@
 import { redirect } from "next/navigation"
 import { prisma } from "./prisma"
-import { verifyPassword } from "./password"
 import {
   setSessionCookie,
   getSessionFromCookie,
   clearSessionCookie,
   type SessionPayload,
 } from "./session"
-import { isEmailAllowedToLogin, normalizeLoginEmail } from "./auth-allowlist"
 import type { UserRole } from "@/generated/prisma/client"
 
 /** The AppUser fields a session cookie is built from. */
@@ -56,49 +54,6 @@ export async function establishSessionForUser(
       },
     }),
   ])
-}
-
-/**
- * DELIBERATE FALLBACK. Magic link is the primary login path; this password path
- * stays only until magic-link delivery is verified in production, because
- * Mailgun credentials are not set there yet. To retire it, delete
- * src/app/login/password-login-form.tsx, drop loginWithPasswordAction from
- * src/app/login/actions.ts, and delete this function.
- */
-export async function authenticateWithPassword(
-  email: string,
-  password: string
-): Promise<{ success: boolean; error?: string }> {
-  const normalizedEmail = normalizeLoginEmail(email)
-  if (!isEmailAllowedToLogin(normalizedEmail)) {
-    return { success: false, error: "Invalid email or password" }
-  }
-
-  const user = await prisma.appUser.findUnique({
-    where: { email: normalizedEmail },
-  })
-
-  if (!user || !user.is_active) {
-    return { success: false, error: "Invalid email or password" }
-  }
-
-  const valid = await verifyPassword(password, user.password_hash)
-  if (!valid) {
-    // Log failed attempt
-    await prisma.authAccessEvent.create({
-      data: {
-        app_user_id: user.id,
-        event_type: "login",
-        event_status: "failed",
-      },
-    })
-    return { success: false, error: "Invalid email or password" }
-  }
-
-  // Session cookie, last login, and success event
-  await establishSessionForUser(user, { eventType: "login" })
-
-  return { success: true }
 }
 
 export async function requireSession(): Promise<SessionPayload> {

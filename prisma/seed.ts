@@ -1,8 +1,9 @@
 import "dotenv/config"
+import { randomBytes } from "node:crypto"
 import pg from "pg"
+import bcrypt from "bcryptjs"
 import { PrismaPg } from "@prisma/adapter-pg"
 import { PrismaClient } from "../src/generated/prisma/client"
-import { hashPassword } from "../src/lib/password"
 
 const pool = new pg.Pool({
   connectionString:
@@ -15,7 +16,9 @@ async function main() {
   console.log("Seeding database...")
 
   // ─── Users ───────────────────────────────────────────────────────────────
-  const password = await hashPassword("lsc2026!")
+  // password_hash is NOT NULL but no password login path exists; seed rows get
+  // an unusable random hash, the same treatment the provisioning script applies.
+  const password = await bcrypt.hash(randomBytes(32).toString("base64url"), 12)
 
   const users = await Promise.all([
     prisma.appUser.upsert({

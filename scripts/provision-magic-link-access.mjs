@@ -1,3 +1,12 @@
+// Provision the three magic-link login accounts. Idempotent: safe to re-run.
+//
+// Magic link is the only login path. AppUser.password_hash is NOT NULL in the
+// database, so rows are written with a bcrypt hash of a random secret that is
+// never printed and never stored; it satisfies the column and can never be used
+// to sign in.
+//
+//   node scripts/provision-magic-link-access.mjs
+//   node scripts/provision-magic-link-access.mjs --deactivate-others
 import { randomBytes } from "node:crypto"
 import { config } from "dotenv"
 import pg from "pg"
@@ -25,40 +34,9 @@ const users = [
 ]
 
 const deactivateOthers = process.argv.includes("--deactivate-others")
-const withBreakGlass = process.argv.includes("--with-break-glass-password")
-const clearBreakGlass = process.argv.includes("--clear-break-glass-password")
 
-if (withBreakGlass && clearBreakGlass) {
-  console.error(
-    "--with-break-glass-password and --clear-break-glass-password are mutually exclusive."
-  )
-  process.exit(1)
-}
-
-/**
- * Magic link is the login path for these accounts, but AppUser.password_hash is
- * NOT NULL. New rows get a hash of a random secret that is never printed and
- * never stored, so it cannot be used to sign in. Existing rows keep whatever
- * hash they already have, so the password fallback keeps working for them.
- */
 async function unusablePasswordHash() {
   return bcrypt.hash(randomBytes(32).toString("base64url"), 12)
-}
-
-/**
- * Break-glass mode, for the window before magic-link delivery is proven.
- *
- * Narrowing AUTH_ALLOWED_EMAILS to this list stops the previous addresses from
- * signing in, and these accounts have no usable password, so if Mailgun is not
- * working yet nobody can reach the dashboard at all. This mode sets a real
- * password on each account and prints it once so there is a way back in.
- *
- * A flagless re-run does NOT retire these passwords: the upsert deliberately
- * preserves existing hashes so the legacy accounts keep the passwords they need
- * during rollout. Retiring is an explicit action, --clear-break-glass-password.
- */
-function breakGlassPassword() {
-  return randomBytes(18).toString("base64url")
 }
 
 async function main() {
@@ -69,19 +47,13 @@ async function main() {
   const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
   const created = []
   const updated = []
-  const breakGlass = []
 
   try {
     for (const user of users) {
-      const plainPassword = withBreakGlass ? breakGlassPassword() : null
-      const passwordHash = plainPassword
-        ? await bcrypt.hash(plainPassword, 12)
-        : await unusablePasswordHash()
+      const passwordHash = await unusablePasswordHash()
 
-      // Both break-glass modes overwrite the hash on existing rows: one to set a
-      // password you can use, the other to replace it with one nobody can. A run
-      // with neither flag leaves existing hashes alone.
-      const overwritePassword = withBreakGlass || clearBreakGlass
+      // Existing rows keep their stored hash untouched; it is unusable either
+      // way now that no password login path exists.
       const result = await pool.query(
         `
           INSERT INTO "AppUser" ("id", "full_name", "email", "role", "password_hash", "is_active", "created_at", "updated_at")
@@ -90,21 +62,16 @@ async function main() {
             "full_name" = EXCLUDED."full_name",
             "role" = EXCLUDED."role",
             "is_active" = true,
-            "password_hash" = CASE WHEN $5 THEN EXCLUDED."password_hash" ELSE "AppUser"."password_hash" END,
             "updated_at" = CURRENT_TIMESTAMP
           RETURNING (xmax = 0) AS inserted
         `,
-        [user.fullName, user.email, user.role, passwordHash, overwritePassword]
+        [user.fullName, user.email, user.role, passwordHash]
       )
 
       if (result.rows[0]?.inserted) {
         created.push(user.email)
       } else {
         updated.push(user.email)
-      }
-
-      if (plainPassword) {
-        breakGlass.push({ email: user.email, password: plainPassword })
       }
     }
 
@@ -126,40 +93,9 @@ async function main() {
   console.log(`Provisioned ${users.length} magic-link accounts as PLATFORM_ADMIN.`)
   if (created.length > 0) console.log(`Created: ${created.join(", ")}`)
   if (updated.length > 0) console.log(`Reactivated or updated: ${updated.join(", ")}`)
-
-  if (clearBreakGlass) {
-    console.log(
-      "Break-glass passwords retired. All three accounts now carry an unusable random hash; magic link is the only way in."
-    )
-  } else if (breakGlass.length > 0) {
-    // Refuse to print secrets into a pipe, a CI log, or a redirected file.
-    if (!process.stdout.isTTY) {
-      console.log("")
-      console.log(
-        "Break-glass passwords were set but NOT printed, because stdout is not a terminal."
-      )
-      console.log(
-        "Re-run this command in an interactive terminal to see them, or use --clear-break-glass-password to undo."
-      )
-    } else {
-      console.log("")
-      console.log("BREAK-GLASS PASSWORDS, shown once and not stored anywhere:")
-      for (const entry of breakGlass) {
-        console.log(`  ${entry.email}  ${entry.password}`)
-      }
-      console.log("")
-      console.log(
-        "Move these into a password manager now, then close this terminal so they leave the scrollback."
-      )
-      console.log(
-        "Once a magic link has worked, run with --clear-break-glass-password to make them unusable."
-      )
-    }
-  } else {
-    console.log(
-      "New rows carry an unusable random password hash. Sign in with a magic link, and keep AUTH_ALLOWED_EMAILS in step with this list."
-    )
-  }
+  console.log(
+    "Magic link is the only way to sign in. Keep AUTH_ALLOWED_EMAILS in step with this list, and make sure Mailgun delivery works before narrowing it."
+  )
 }
 
 main().catch((error) => {

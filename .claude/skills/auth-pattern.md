@@ -2,9 +2,9 @@
 
 ## Overview
 Magic-link authentication with cookie-based HMAC-signed sessions. A visitor asks
-for a link, Mailgun delivers it, and the callback creates the session. An
-email/password form is retained as a secondary fallback until magic-link delivery
-is verified in production.
+for a link, Mailgun delivers it, and the callback creates the session. This is the
+ONLY login path; the password fallback was removed on 2026-08-13, which makes
+Mailgun delivery a hard dependency of login itself.
 
 Only emails in `AUTH_ALLOWED_EMAILS` can log in, and existing cookies are
 rejected if their email is removed from the allowlist.
@@ -17,8 +17,7 @@ Approved users:
 ## Files
 
 ### `src/app/login/page.tsx`
-- Renders `MagicLinkForm` as the primary login path.
-- Renders `PasswordLoginForm` below it as a secondary fallback.
+- Renders `MagicLinkForm` as the only login path.
 - Maps `?error=` codes, including `magic_link_invalid`, to a humanized message.
 
 ### `src/app/login/magic-link-form.tsx`
@@ -26,16 +25,9 @@ Approved users:
 - Calls `requestMagicLinkAction`, then replaces itself with a neutral
   confirmation that states the link expires in 15 minutes.
 
-### `src/app/login/password-login-form.tsx`
-- Deliberate fallback, hidden behind a "Sign in with a password instead" toggle.
-- Client form with email and password fields; calls `loginWithPasswordAction`.
-
 ### `src/app/login/actions.ts`
 - `requestMagicLinkAction` calls `requestMagicLink()` and always returns the same
   neutral confirmation, so the form cannot enumerate users.
-- `loginWithPasswordAction` calls `authenticateWithPassword(email, password)`,
-  redirects to `/legal` on success, and returns generic
-  `Invalid email or password` style failures.
 
 ### `src/lib/magic-link.ts`
 - `requestMagicLink()` mints `crypto.randomBytes(32).toString("base64url")`,
@@ -75,16 +67,15 @@ Approved users:
 ### `src/lib/auth.ts`
 - Uses Prisma to query `AppUser`.
 - `establishSessionForUser()` is the one place that sets the session cookie,
-  updates `last_login_at`, and writes the success `AuthAccessEvent`. Both login
-  paths call it.
+  updates `last_login_at`, and writes the success `AuthAccessEvent`. The
+  magic-link callback is its only caller.
 - Login is blocked unless the normalized email is in `AUTH_ALLOWED_EMAILS`.
 - Login is blocked when `AppUser.is_active = false`.
-- `authenticateWithPassword()` verifies bcrypt hashes for the fallback path.
 
 ### `src/lib/session.ts`
 - Cookie name: `lsc_legal_session`.
 - HMAC signing using `AUTH_SESSION_SECRET`.
-- Expiry: 90 days.
+- Expiry: 30 days from each sign-in (`SESSION_DURATION_MS`).
 - `verifySessionToken()` checks expiry and `AUTH_ALLOWED_EMAILS`, so removing an
   email from the allowlist invalidates that user on the next request.
 
@@ -105,10 +96,6 @@ Recommended production command:
 node scripts/provision-magic-link-access.mjs --deactivate-others
 ```
 
-### `scripts/provision-password-access.mjs`
-- Legacy provisioner for the password fallback accounts. Retire it with the
-  fallback.
-
 ### `src/app/api/auth/logout/route.ts`
 - Clears the session cookie and redirects to `/login`.
 
@@ -119,7 +106,8 @@ node scripts/provision-magic-link-access.mjs --deactivate-others
 - `magic_link_requested`, `success` or `failed`, with a failure `reason` in
   `metadata`.
 - `magic_link_consumed`, `success` or `failed`.
-- `login` and `logout` for the password fallback path.
+- `logout` on sign-out. Historical `login` rows are from the retired password
+  path.
 
 ## Required Env
 
@@ -139,5 +127,5 @@ DIRECT_DATABASE_URL=<production direct database url>
 and `AUTH_ALLOWED_EMAILS`. Email delivery now depends on Mailgun and its verified
 sending domain. No `RESEND_API_KEY` or `AUTH_EMAIL_FROM` is used.
 
-See `ops/magic-link-auth.md` for the operator runbook and the steps to remove the
-password fallback.
+See `ops/magic-link-auth.md` for the operator runbook, the rollout order, and
+what to do in a lockout.

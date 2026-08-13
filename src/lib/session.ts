@@ -3,7 +3,8 @@ import type { UserRole } from "@/generated/prisma/client"
 import { isEmailAllowedToLogin } from "./auth-allowlist"
 
 const COOKIE_NAME = "lsc_legal_session"
-const SESSION_DURATION_MS = 90 * 24 * 60 * 60 * 1000 // 90 days
+// One magic-link sign-in keeps the user signed in for 30 days.
+const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
 
 export interface SessionPayload {
   userId: string
