@@ -104,7 +104,7 @@ if (process.env.LEGAL_TRACKER_NOTIFY_ENABLED === "1") {
 }
 
 if (process.env.MAGIC_LINK_LOGIN_ENABLED === "1") {
-  for (const name of ["MAILGUN_DOMAIN", "MAILGUN_API_KEY", "MAILGUN_SENDER", "AUTH_ALLOWED_EMAILS", "AUTH_APP_URL"]) {
+  for (const name of ["MAILGUN_DOMAIN", "MAILGUN_API_KEY", "MAILGUN_SENDER", "AUTH_ALLOWED_EMAILS", "AUTH_APP_URL", "MAILGUN_WEBHOOK_SIGNING_KEY"]) {
     if (!process.env[name]) errors.push(`${name} is required when MAGIC_LINK_LOGIN_ENABLED=1`)
   }
 }

@@ -58,13 +58,17 @@ if (process.env.MAGIC_LINK_LOGIN_ENABLED === "1") {
     "AUTH_ALLOWED_EMAILS",
     // Server-side, so it can be changed without a rebuild. A NEXT_PUBLIC_ value
     // would be frozen into the bundle at build time.
-    "AUTH_APP_URL"
+    "AUTH_APP_URL",
+    // Delivery events are the audit trail for outbound contract mail; without
+    // the signing key the webhook rejects everything Mailgun sends.
+    "MAILGUN_WEBHOOK_SIGNING_KEY"
   )
 }
 
 const requiredRoutes = [
   "src/app/api/webhooks/gmail/route.ts",
   "src/app/api/webhooks/opensign/route.ts",
+  "src/app/api/webhooks/mailgun/route.ts",
   "src/app/api/auth/logout/route.ts",
   "src/app/api/auth/magic/route.ts",
   "src/app/api/cron/finance-resync/route.ts",
