@@ -3,8 +3,8 @@
 # server container. Use this after deploy.sh ran with ALLOW_PLACEHOLDER_MAIL=1.
 #
 # Usage:
-#   MAILGUN_API_KEY=key-... MAILGUN_DOMAIN=mg.leaguesports.co \
-#   MAILGUN_SENDER=postmaster@mg.leaguesports.co ops/opensign-gcp/set-mailgun.sh
+#   MAILGUN_API_KEY=key-... MAILGUN_DOMAIN=futureofsports.io \
+#   MAILGUN_SENDER='League Sports Legal <legal@futureofsports.io>' ops/opensign-gcp/set-mailgun.sh
 set -euo pipefail
 
 PROJECT_ID="${PROJECT_ID:-fsp-legal-esign}"

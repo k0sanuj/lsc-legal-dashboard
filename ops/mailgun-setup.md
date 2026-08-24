@@ -12,17 +12,20 @@ account credentials and four DNS records.
 
 ## What to create in Mailgun
 
-1. Create the account, then add a **sending domain**. Use a dedicated subdomain,
-   not the corporate domain:
+1. **Check whether an account already exists first.** The DNS for
+   `futureofsports.io` is already fully set up for Mailgun (verified 2026-08-16):
 
    ```
-   sign.leaguesports.co
+   SPF     v=spf1 include:_spf.google.com include:mailgun.org ~all
+   DKIM    mailo._domainkey.futureofsports.io
+   Track   email.futureofsports.io -> mailgun.org
+   DMARC   p=none, reports to fc491052@dmarc.mailgun.org
    ```
 
-   Why a subdomain: sending reputation is tracked per domain. If application mail
-   ever gets marked as spam, a subdomain keeps that damage away from the domain
-   the team sends real business mail from. It also means Mailgun's SPF and DKIM
-   records do not collide with Google Workspace's on the root domain.
+   A domain can only be verified in one Mailgun account, so if you create a new
+   account and add `futureofsports.io`, it will be rejected as already claimed.
+   Find the existing account before signing up. The DMARC reporting address is
+   the clue to who set it up.
 
 2. Note the region. Mailgun runs separate US and EU stacks on different API
    hosts, and an EU key against the US host fails as `401`, which looks exactly
@@ -40,34 +43,33 @@ account credentials and four DNS records.
    https://<app-host>/api/webhooks/mailgun
    ```
 
-## DNS records, at GoDaddy
+## DNS records
 
-The compliance tracker lists GoDaddy as holding `leaguesports.co`. Mailgun shows
-the exact values; the shape is:
+**Already done for `futureofsports.io`.** SPF, DKIM, the tracking CNAME and DMARC
+all resolve correctly today, so there is nothing to add at the registrar. The SPF
+record is the one people get wrong and it is already right here: Google and
+Mailgun are merged into a single record, rather than two separate SPF records,
+which would invalidate both.
 
-| Type | Name | Purpose | Required |
-| --- | --- | --- | --- |
-| TXT | `sign` | SPF, `v=spf1 include:mailgun.org ~all` | Yes |
-| TXT | `<selector>._domainkey.sign` | DKIM public key | Yes |
-| CNAME | `email.sign` | Click and open tracking | Optional |
-| MX | `sign` | Inbound routing, `mxa/mxb.mailgun.org` | Only if replies are handled |
-| TXT | `_dmarc.leaguesports.co` | `v=DMARC1; p=none; rua=mailto:dmarc@leaguesports.co` | Strongly recommended |
+```
+v=spf1 include:_spf.google.com include:mailgun.org ~all
+```
 
-Notes that decide whether contracts reach the inbox:
+Two things to keep in mind now that the sending domain is the root corporate
+domain rather than a subdomain:
 
-- **SPF and DKIM are not optional.** Since the 2024 Gmail and Yahoo sender rules,
-  unauthenticated mail to consumer inboxes is junked or refused outright.
-- **Start DMARC at `p=none`** and read the reports for a couple of weeks before
-  tightening to `quarantine`. Going straight to `p=reject` while Workspace,
-  Mailgun and anything else that sends as the domain are not all aligned will
-  bounce legitimate mail, including your own login links.
-- **Do not request a dedicated IP.** Contract volume is a handful per day, and a
-  dedicated IP needs steady volume to stay warm. At this volume the shared pool
-  delivers better.
-- **`MAILGUN_SENDER` must be on the sending domain.** A From address on a
-  different domain fails alignment and lands in spam. Use something a
-  counterparty recognises, for example `League Sports Legal <legal@sign.leaguesports.co>`,
-  with `MAILGUN_REPLY_TO` pointing at a mailbox a human actually reads.
+- **App mail and everyone's Workspace mail share one reputation.** At contract
+  volume that is fine. If outbound volume ever grows a lot, moving to a
+  subdomain such as `sign.futureofsports.io` is the escape hatch, and it means
+  repeating the DKIM and tracking records there.
+- **DMARC is at `p=none`**, which means nothing gets rejected while the reports
+  accumulate. Read them for a couple of weeks before tightening to `quarantine`.
+  Do not jump to `p=reject` until Workspace and Mailgun are both confirmed
+  aligned, or legitimate mail including your own login links will bounce.
+
+`MAILGUN_SENDER` must stay on `futureofsports.io` for alignment. Sending as
+`legal@futureofsports.io` is correct and will authenticate. A From address on
+`leaguesports.co` would not: that domain has no SPF record at all.
 
 ## Where each secret goes
 
@@ -76,10 +78,10 @@ Three places need credentials, because three things send mail.
 **Vercel and Cloud Run** (the dashboard, for magic-link login):
 
 ```bash
-MAILGUN_DOMAIN=sign.leaguesports.co
+MAILGUN_DOMAIN=futureofsports.io
 MAILGUN_API_KEY=<private API key>
-MAILGUN_SENDER=League Sports Legal <legal@sign.leaguesports.co>
-MAILGUN_REPLY_TO=legal@leaguesports.co
+MAILGUN_SENDER=League Sports Legal <legal@futureofsports.io>
+MAILGUN_REPLY_TO=legal@futureofsports.io
 MAILGUN_REGION=us
 MAILGUN_WEBHOOK_SIGNING_KEY=<webhook signing key>
 AUTH_APP_URL=https://<app-host>
@@ -98,8 +100,8 @@ gcloud run services update lsc-legal-dashboard \
 
 ```bash
 MAILGUN_API_KEY=<same key> \
-MAILGUN_DOMAIN=sign.leaguesports.co \
-MAILGUN_SENDER=postmaster@sign.leaguesports.co \
+MAILGUN_DOMAIN=futureofsports.io \
+MAILGUN_SENDER='League Sports Legal <legal@futureofsports.io>' \
 ops/opensign-gcp/set-mailgun.sh
 ```
 
