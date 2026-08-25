@@ -50,7 +50,8 @@ async function main() {
     console.log("\nNothing else can be checked without credentials. Stopping.")
     return
   }
-  line("ok", `env present for domain ${env("MAILGUN_DOMAIN")} (${env("MAILGUN_REGION") || "us"} region)`)
+  const domain = env("MAILGUN_DOMAIN")
+  line("ok", `env present for domain ${domain} (${env("MAILGUN_REGION") || "us"} region)`)
 
   if (!env("MAILGUN_WEBHOOK_SIGNING_KEY")) {
     line("warn", "MAILGUN_WEBHOOK_SIGNING_KEY unset, so delivery events will be rejected")
@@ -71,7 +72,8 @@ async function main() {
 
   // 2. Credentials + domain state
   let domainState = null
-  let records = []
+  let sendingRecords = []
+  let receivingRecords = []
   try {
     const res = await fetch(
       `${apiHost()}/v4/domains/${encodeURIComponent(env("MAILGUN_DOMAIN"))}`,
@@ -91,10 +93,8 @@ async function main() {
     } else {
       const parsed = JSON.parse(raw)
       domainState = parsed.domain?.state ?? "unknown"
-      records = [
-        ...(parsed.sending_dns_records ?? []),
-        ...(parsed.receiving_dns_records ?? []),
-      ]
+      sendingRecords = parsed.sending_dns_records ?? []
+      receivingRecords = parsed.receiving_dns_records ?? []
       if (domainState === "active") {
         line("ok", "domain state: active")
       } else {
@@ -107,25 +107,60 @@ async function main() {
     problems.push("network")
   }
 
-  // 3. Mailgun's own view of the DNS records
-  if (records.length > 0) {
-    console.log("\nDNS records Mailgun expects:")
-    for (const record of records) {
+  // 3. Mailgun's own view of the DNS records.
+  //
+  // Only the SENDING records gate delivery, and only SPF and DKIM within them.
+  // The tracking CNAME affects open and click stats, nothing else.
+  //
+  // The RECEIVING (MX) records are never required to send, and on a domain whose
+  // mail is hosted elsewhere they must never be added: pointing MX at Mailgun on
+  // a Google Workspace domain would divert and break all company email. So they
+  // are reported as information, with a warning if anything suggests adding them.
+  if (sendingRecords.length > 0) {
+    console.log("\nSending DNS records (these gate delivery):")
+    for (const record of sendingRecords) {
       const valid = (record.valid ?? "unknown").toLowerCase()
-      const label = `${record.record_type} ${record.name || "(root)"}`
+      const type = (record.record_type ?? "").toUpperCase()
+      const label = `${type} ${record.name || "(root)"}`
+      const isTracking = type === "CNAME"
+
       if (valid === "valid") {
         line("ok", label)
+      } else if (isTracking) {
+        line("warn", `${label} is ${valid}. Open and click tracking only, delivery is unaffected`)
+        warnings.push("tracking cname")
       } else {
         line("fail", `${label} is ${valid}`)
-        problems.push(`dns:${record.record_type}`)
+        problems.push(`dns:${type}`)
         console.log(`         value: ${(record.value ?? "").slice(0, 120)}`)
       }
     }
   }
 
+  if (receivingRecords.length > 0) {
+    const mxHosts = await dns.resolveMx(domain).catch(() => [])
+    const usesMailgunMx = mxHosts.some((mx) => /mailgun\.org$/i.test(mx.exchange))
+    const mailHost = mxHosts.some((mx) => /google\.com$/i.test(mx.exchange))
+      ? "Google Workspace"
+      : mxHosts.length > 0
+        ? mxHosts[0].exchange
+        : "an external host"
+
+    console.log("\nReceiving DNS records (inbound mail, not needed to send):")
+    if (usesMailgunMx) {
+      line("ok", "MX already points at Mailgun, inbound routing is active")
+    } else {
+      line(
+        "ok",
+        `not configured, which is correct here: MX points at ${mailHost}`
+      )
+      console.log("         Do NOT add Mailgun's MX records to this domain.")
+      console.log("         Doing so would divert inbound mail away from the mailboxes.")
+    }
+  }
+
   // 4. Local DNS view, which catches records that exist but resolve wrong
   console.log("\nLocal DNS view:")
-  const domain = env("MAILGUN_DOMAIN")
   try {
     const txt = (await dns.resolveTxt(domain)).map((chunks) => chunks.join(""))
     const spf = txt.find((value) => value.toLowerCase().startsWith("v=spf1"))
