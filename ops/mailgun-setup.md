@@ -101,9 +101,18 @@ gcloud run services update lsc-legal-dashboard \
 ```bash
 MAILGUN_API_KEY=<same key> \
 MAILGUN_DOMAIN=futureofsports.io \
-MAILGUN_SENDER='League Sports Legal <legal@futureofsports.io>' \
+MAILGUN_SENDER=legal@futureofsports.io \
 ops/opensign-gcp/set-mailgun.sh
 ```
+
+**The sender format differs between the two systems, and getting it wrong fails
+silently.** The dashboard accepts a display name, because it passes the value
+straight to Mailgun's `from` parameter, which understands `Name <address>`.
+OpenSign does not: it builds its own header as `appName <MAILGUN_SENDER>`, so a
+display name here nests the angle brackets and Mailgun rejects every send with
+`400 from parameter is not a valid address`. Nothing in the OpenSign UI reports
+this; mail just never arrives. Use a bare address on the VM and set the display
+name with `appName` in `.env.prod`. `set-mailgun.sh` now refuses the wrong form.
 
 That script rewrites `/opt/opensign/.env.prod` on the VM and restarts the server
 container. It replaces the placeholder values the stack was provisioned with.
