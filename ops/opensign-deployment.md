@@ -66,7 +66,15 @@ the interface:
    re-fetches the document each time a signer opens it, which can be days later.
 
 Because there are no webhooks, completion is discovered by polling
-`/api/cron/opensign-poll` every 15 minutes. It shares its completion path with
+`/api/cron/opensign-poll`.
+
+**The 15 minute cadence runs on GCP, not Vercel.** Vercel's Hobby plan permits
+only one cron run per day and rejects the whole deployment if any schedule asks
+for more, so `vercel.json` carries a daily entry purely to stay deployable. The
+real poll is a Cloud Scheduler job, `opensign-poll` in `fsp-legal-esign`
+(`asia-southeast1`), calling the Cloud Run URL every 15 minutes with a bearer
+`CRON_SECRET`. Cloud Run has its own `CRON_SECRET`, separate from Vercel's,
+because Vercel stores that value as sensitive and will not disclose it. It shares its completion path with
 the (currently dead) webhook route via `src/lib/opensign-sync.ts`, so filing the
 signed PDF and posting to Finance cannot drift between the two.
 

@@ -22,7 +22,7 @@
     },
     {
       "path": "/api/cron/opensign-poll",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 7 * * *"
     }
   ]
 }
