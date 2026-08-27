@@ -76,7 +76,7 @@ if (!process.env.GEMINI_API_KEY) {
 }
 
 if (process.env.OPENSIGN_SIGNING_ENABLED === "1") {
-  for (const name of ["OPENSIGN_BASE_URL", "OPENSIGN_API_TOKEN", "OPENSIGN_WEBHOOK_SECRET", "OPENSIGN_WEBHOOK_URL"]) {
+  for (const name of ["OPENSIGN_BASE_URL", "OPENSIGN_APP_ID", "OPENSIGN_MASTER_KEY", "OPENSIGN_USER_EMAIL"]) {
     if (!process.env[name]) errors.push(`${name} is required when OPENSIGN_SIGNING_ENABLED=1`)
   }
 }

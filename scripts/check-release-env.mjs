@@ -27,9 +27,11 @@ const requiredEnv = [
 if (process.env.OPENSIGN_SIGNING_ENABLED === "1") {
   requiredEnv.push(
     "OPENSIGN_BASE_URL",
-    "OPENSIGN_API_TOKEN",
-    "OPENSIGN_WEBHOOK_SECRET",
-    "OPENSIGN_WEBHOOK_URL"
+    // Self-hosted OpenSign has no API tokens; auth is Parse master-key
+    // impersonation of the account documents are created as.
+    "OPENSIGN_APP_ID",
+    "OPENSIGN_MASTER_KEY",
+    "OPENSIGN_USER_EMAIL"
   )
 }
 
@@ -73,6 +75,7 @@ const requiredRoutes = [
   "src/app/api/auth/magic/route.ts",
   "src/app/api/cron/finance-resync/route.ts",
   "src/app/api/cron/compliance-scan/route.ts",
+  "src/app/api/cron/opensign-poll/route.ts",
 ]
 
 const missingEnv = Array.from(new Set(requiredEnv)).filter((name) => !process.env[name])
