@@ -5,7 +5,7 @@ import { requireRole } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { emitLegalTrackerEvent } from "@/lib/legal-tracker"
 import { buildAgreementSentMessage } from "@/lib/legal-tracker-payloads"
-import { createOpenSignDocument, getOpenSignWebhookUrl } from "@/lib/opensign"
+import { createOpenSignDocument } from "@/lib/opensign"
 import { getPresignedUrl, getS3KeyFromUrl } from "@/lib/s3"
 import { revalidatePath } from "next/cache"
 import { after } from "next/server"
@@ -15,8 +15,11 @@ function getOpenSignErrorMessage(error: unknown): string {
     if (error.message.includes("OPENSIGN_BASE_URL")) {
       return "OpenSign is not configured. Add OPENSIGN_BASE_URL to the environment."
     }
-    if (error.message.includes("OPENSIGN_API_TOKEN")) {
-      return "OpenSign API token is not configured. Add OPENSIGN_API_TOKEN to the environment."
+    if (error.message.includes("OPENSIGN_MASTER_KEY")) {
+      return "OpenSign master key is not configured. Add OPENSIGN_MASTER_KEY to the environment."
+    }
+    if (error.message.includes("has no account for")) {
+      return error.message
     }
     return error.message
   }
@@ -29,14 +32,13 @@ async function getOpenSignFileUrl(fileUrl: string): Promise<string> {
   return getPresignedUrl(s3Key)
 }
 
-async function fetchFileAsBase64(fileUrl: string): Promise<string> {
+async function fetchFileBytes(fileUrl: string): Promise<Buffer> {
   const downloadUrl = await getOpenSignFileUrl(fileUrl)
   const response = await fetch(downloadUrl, { signal: AbortSignal.timeout(15_000) })
   if (!response.ok) {
     throw new Error(`Could not read document file for OpenSign: HTTP ${response.status}`)
   }
-  const buffer = Buffer.from(await response.arrayBuffer())
-  return buffer.toString("base64")
+  return Buffer.from(await response.arrayBuffer())
 }
 
 function parseWidgetsJson(value: FormDataEntryValue | null): Record<string, unknown[]> {
@@ -103,15 +105,13 @@ export async function createOpenSignSignatureRequest(formData: FormData) {
   }
 
   try {
-    const fileBase64 = await fetchFileAsBase64(doc.file_url)
+    const fileBytes = await fetchFileBytes(doc.file_url)
     const result = await createOpenSignDocument({
       title: doc.title,
       note: `Signature required: ${doc.title}`,
       description: `Prepared in LSC Legal by ${session.email}`,
       fileName: `${doc.title.replace(/[^a-zA-Z0-9._-]/g, "_")}.pdf`,
-      fileBase64,
-      webhookUrl: getOpenSignWebhookUrl() ?? undefined,
-      metadata: { documentId: doc.id },
+      fileBytes,
       signers: pendingSigners.map((signer, index) => ({
         name: signer.signatory_name,
         email: signer.signatory_email,

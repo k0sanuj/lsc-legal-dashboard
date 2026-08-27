@@ -26,23 +26,52 @@ point an A record at the static IP and re-run `deploy.sh` with `OPENSIGN_HOST=si
 
 ## Legal Dashboard Env
 
-Set these in Vercel Production:
+```
+OPENSIGN_BASE_URL=https://sign-34-18-92-76.sslip.io/api/app
+OPENSIGN_PUBLIC_URL=https://sign-34-18-92-76.sslip.io
+OPENSIGN_APP_ID=opensign
+OPENSIGN_MASTER_KEY=<MASTER_KEY from the VM's /opt/opensign/.env.prod>
+OPENSIGN_USER_EMAIL=legal@futureofsports.io
+```
 
-- `OPENSIGN_BASE_URL=https://sign-34-18-92-76.sslip.io/api/app/v1`
-- `OPENSIGN_PUBLIC_URL=https://sign-34-18-92-76.sslip.io`
-- `OPENSIGN_API_TOKEN=<token generated in OpenSign>`
-- `OPENSIGN_WEBHOOK_SECRET=<shared HMAC secret>`
-- `OPENSIGN_WEBHOOK_URL=https://lsc-legal-dashboard.vercel.app/api/webhooks/opensign`
+## What the self-hosted build does NOT have
 
-The REST base path is `/api/app/v1`, **not** `/api/v1`. That was verified against the running
-container with `ops/opensign-gcp/probe-api.sh`, which found `/api/v1/createdocument` returns 404
-while `/api/app/v1/createdocument` returns 403 `{"error":"unauthorized"}`. Caddy strips the `/api`
-prefix and the Parse server mounts at `PARSE_MOUNT=/app`, so the REST routes land under
-`/api/app/v1`. Re-run the probe after any OpenSign image upgrade before trusting the old value.
+Verified against the running container on 2026-08-27, and this corrects earlier
+notes in this file:
 
-`getOpenSignSetupStatus()` in `src/lib/opensign.ts` treats the feature as unconfigured until
-`OPENSIGN_BASE_URL`, `OPENSIGN_API_TOKEN`, `OPENSIGN_WEBHOOK_SECRET` and `OPENSIGN_WEBHOOK_URL`
-are all present, so a partial rollout degrades safely instead of failing mid-send.
+- **No REST v1 API.** There is no `/api/v1` or `/api/app/v1`. An earlier version
+  of this document claimed `/api/app/v1` was verified because it returned 403
+  rather than 404; that was a misreading, since Parse returns 403 for unknown
+  paths under its mount too.
+- **No API tokens.** The client bundle has no `/generatetoken` route, the server
+  never reads an `x-api-token` header, and no token is stored anywhere. The
+  "API Token" entry in Settings is a menu item whose page was never bundled, so
+  it 404s. It is a cloud-only feature.
+- **No webhooks.** Nothing in the server source mentions them, and the Webhook
+  settings page is likewise absent. `OPENSIGN_WEBHOOK_SECRET` and
+  `OPENSIGN_WEBHOOK_URL` are therefore unused by this deployment.
+
+## How the integration actually works
+
+Parse Server is mounted at `/api/app` with about 70 cloud functions, and that is
+the interface:
+
+1. `POST /api/app/loginAs` with `X-Parse-Master-Key` mints a session token for
+   the `OPENSIGN_USER_EMAIL` account. No OpenSign password is stored anywhere.
+2. Cloud functions are called with `X-Parse-Session-Token`:
+   `createDocumentFromApp` to raise a signature request, `getDocument` to read
+   progress, `savecontact` and `isUserInContactBook` to resolve signers.
+3. The PDF is uploaded into OpenSign's own Parse file store rather than passed
+   as a presigned S3 link. Presigned links expire in an hour, while OpenSign
+   re-fetches the document each time a signer opens it, which can be days later.
+
+Because there are no webhooks, completion is discovered by polling
+`/api/cron/opensign-poll` every 15 minutes. It shares its completion path with
+the (currently dead) webhook route via `src/lib/opensign-sync.ts`, so filing the
+signed PDF and posting to Finance cannot drift between the two.
+
+The practical consequence: signature status updates lag by up to 15 minutes
+rather than arriving instantly. For contract signing that is not material.
 
 ## Mailgun
 

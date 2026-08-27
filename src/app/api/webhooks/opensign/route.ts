@@ -13,6 +13,15 @@ import { buildContractPayload } from "@/lib/finance-payloads"
 
 export const runtime = "nodejs"
 
+/**
+ * NOTE: the self-hosted OpenSign build sends no webhooks. Nothing in its server
+ * source references them, and the Webhook settings page is not in the client
+ * bundle. This route is therefore dead for the current deployment and is kept
+ * only for a future hosted instance. The live mechanism is the polling cron at
+ * /api/cron/opensign-poll, which shares the completion path in
+ * src/lib/opensign-sync.ts.
+ */
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
