@@ -1,0 +1,46 @@
+{
+  "display_information": {
+    "name": "LSC Legal",
+    "description": "Legal status answers and MNDA sending for League Sports Co.",
+    "background_color": "#020617"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "LSC Legal",
+      "always_online": true
+    },
+    "slash_commands": [
+      {
+        "command": "/legal",
+        "url": "https://lsc-legal-dashboard.vercel.app/api/slack/commands",
+        "description": "Legal status, signatures in flight, agreement lookup",
+        "usage_hint": "[status | signatures | find <query> | help]",
+        "should_escape": false
+      },
+      {
+        "command": "/mnda",
+        "url": "https://lsc-legal-dashboard.vercel.app/api/slack/commands",
+        "description": "Send an MNDA for signature",
+        "should_escape": false
+      }
+    ]
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "commands",
+        "chat:write",
+        "chat:write.public"
+      ]
+    }
+  },
+  "settings": {
+    "interactivity": {
+      "is_enabled": true,
+      "request_url": "https://lsc-legal-dashboard.vercel.app/api/slack/interactivity"
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}

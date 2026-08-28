@@ -67,6 +67,21 @@ if (process.env.MAGIC_LINK_LOGIN_ENABLED === "1") {
   )
 }
 
+if (process.env.SLACK_LEGAL_ENABLED === "1") {
+  requiredEnv.push(
+    "SLACK_SIGNING_SECRET",
+    "SLACK_BOT_TOKEN",
+    // Slack member id to dashboard email pairs; empty authorises nobody.
+    "SLACK_LEGAL_ADMINS",
+    // Fallback channel for MNDA outcome posts when the originating channel
+    // refuses the bot.
+    "SLACK_LEGAL_CHANNEL_ID",
+    // The MNDA countersigner has no code default; an unset value blocks sends.
+    "MNDA_FSP_SIGNER_NAME",
+    "MNDA_FSP_SIGNER_EMAIL"
+  )
+}
+
 const requiredRoutes = [
   "src/app/api/webhooks/gmail/route.ts",
   "src/app/api/webhooks/opensign/route.ts",
@@ -76,6 +91,8 @@ const requiredRoutes = [
   "src/app/api/cron/finance-resync/route.ts",
   "src/app/api/cron/compliance-scan/route.ts",
   "src/app/api/cron/opensign-poll/route.ts",
+  "src/app/api/slack/commands/route.ts",
+  "src/app/api/slack/interactivity/route.ts",
 ]
 
 const missingEnv = Array.from(new Set(requiredEnv)).filter((name) => !process.env[name])

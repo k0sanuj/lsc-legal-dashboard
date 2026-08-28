@@ -9,7 +9,7 @@ import { createSignatureRequest, deleteSignatureRequest } from "@/actions/signat
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import type { OpenSignSetupStatus } from "@/lib/opensign"
+import type { OpenSignFieldPlacement, OpenSignSetupStatus } from "@/lib/opensign"
 import type { SignatureStatus } from "@/generated/prisma/client"
 
 type Signer = {
@@ -24,10 +24,14 @@ type Signer = {
   signing_url: string | null
 }
 
+type FieldType = OpenSignFieldPlacement["type"]
+
+// x/y/w/h are percentages (0-100) of the page box, origin top-left. They are
+// divided by 100 on submit to form the normalized OpenSignFieldPlacement.
 type FieldDraft = {
   id: string
   signerEmail: string
-  type: "signature" | "date" | "text" | "checkbox"
+  type: FieldType
   page: number
   x: number
   y: number
@@ -44,22 +48,24 @@ const STATUS_STYLES: Record<SignatureStatus, string> = {
   STALLED: "bg-rose-500/10 text-rose-400 border-rose-500/20",
 }
 
-const FIELD_DEFAULTS: Record<FieldDraft["type"], Pick<FieldDraft, "w" | "h" | "label">> = {
-  signature: { w: 170, h: 36, label: "Signature" },
-  date: { w: 90, h: 24, label: "Date" },
-  text: { w: 180, h: 28, label: "Text" },
-  checkbox: { w: 18, h: 18, label: "Checkbox" },
+const FIELD_DEFAULTS: Record<FieldType, Pick<FieldDraft, "w" | "h" | "label">> = {
+  signature: { w: 28, h: 7, label: "Signature" },
+  initials: { w: 10, h: 5, label: "Initials" },
+  date: { w: 16, h: 3, label: "Date" },
+  "text input": { w: 30, h: 3, label: "Text" },
+  name: { w: 28, h: 3, label: "Name" },
+  email: { w: 30, h: 3, label: "Email" },
 }
 
-function newField(signerEmail: string, type: FieldDraft["type"] = "signature"): FieldDraft {
+function newField(signerEmail: string, type: FieldType = "signature"): FieldDraft {
   const defaults = FIELD_DEFAULTS[type]
   return {
     id: crypto.randomUUID(),
     signerEmail,
     type,
     page: 1,
-    x: 340,
-    y: type === "date" ? 728 : 680,
+    x: 8,
+    y: type === "date" ? 72 : 62,
     w: defaults.w,
     h: defaults.h,
     label: defaults.label,
@@ -67,22 +73,25 @@ function newField(signerEmail: string, type: FieldDraft["type"] = "signature"): 
   }
 }
 
+// Serializes drafts to the normalized { [email]: OpenSignFieldPlacement[] }
+// map the server action expects: percentages become fractions of the page box.
 function buildWidgetsJson(fields: FieldDraft[]) {
-  const widgets: Record<string, unknown[]> = {}
+  const bySigner: Record<string, OpenSignFieldPlacement[]> = {}
   for (const field of fields) {
-    if (!widgets[field.signerEmail]) widgets[field.signerEmail] = []
-    widgets[field.signerEmail]!.push({
-      type: field.type,
+    const placements = (bySigner[field.signerEmail] ??= [])
+    placements.push({
       page: field.page,
-      x: field.x,
-      y: field.y,
-      w: field.w,
-      h: field.h,
-      label: field.label,
+      xPct: field.x / 100,
+      yPct: field.y / 100,
+      wPct: field.w / 100,
+      hPct: field.h / 100,
+      type: field.type,
       required: field.required,
+      // Shown to the signer as help text on the field (options.hint).
+      label: field.label,
     })
   }
-  return JSON.stringify(widgets)
+  return JSON.stringify(bySigner)
 }
 
 export function SignaturePrepPanel({
@@ -322,9 +331,11 @@ export function SignaturePrepPanel({
               className="h-10 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
             >
               <option value="signature">Signature</option>
+              <option value="initials">Initials</option>
               <option value="date">Date</option>
-              <option value="text">Text</option>
-              <option value="checkbox">Checkbox</option>
+              <option value="text input">Text</option>
+              <option value="name">Name</option>
+              <option value="email">Email</option>
             </select>
             <Button
               type="button"
@@ -366,9 +377,11 @@ export function SignaturePrepPanel({
                         type="number"
                         value={field[key]}
                         min={key === "page" ? 1 : 0}
+                        max={key === "page" ? undefined : 100}
                         onChange={(event) => updateField(field.id, { [key]: Number(event.target.value) })}
                         className="h-8 text-xs"
-                        aria-label={key}
+                        aria-label={key === "page" ? "page" : `${key} %`}
+                        title={key === "page" ? "page" : `${key} %`}
                       />
                     ))}
                     <Input
