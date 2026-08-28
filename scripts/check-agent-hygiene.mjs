@@ -103,6 +103,16 @@ if (process.env.LEGAL_TRACKER_NOTIFY_ENABLED === "1") {
   }
 }
 
+if (process.env.SLACK_LEGAL_ENABLED === "1") {
+  for (const name of ["SLACK_SIGNING_SECRET", "SLACK_BOT_TOKEN", "SLACK_LEGAL_ADMINS",
+    "SLACK_LEGAL_CHANNEL_ID",
+    // The MNDA countersigner has no code default; an unset value blocks sends.
+    "MNDA_FSP_SIGNER_NAME",
+    "MNDA_FSP_SIGNER_EMAIL", "SLACK_LEGAL_CHANNEL_ID"]) {
+    if (!process.env[name]) errors.push(`${name} is required when SLACK_LEGAL_ENABLED=1`)
+  }
+}
+
 if (process.env.MAGIC_LINK_LOGIN_ENABLED === "1") {
   for (const name of ["MAILGUN_DOMAIN", "MAILGUN_API_KEY", "MAILGUN_SENDER", "AUTH_ALLOWED_EMAILS", "AUTH_APP_URL", "MAILGUN_WEBHOOK_SIGNING_KEY"]) {
     if (!process.env[name]) errors.push(`${name} is required when MAGIC_LINK_LOGIN_ENABLED=1`)

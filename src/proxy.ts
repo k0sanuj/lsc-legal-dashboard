@@ -29,6 +29,14 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Skip the Slack control surface; those routes verify the Slack request
+  // signature and authorise against the SLACK_LEGAL_ADMINS allowlist, not user
+  // sessions. Without this, Slack's POSTs get redirected to /login and every
+  // slash command times out.
+  if (pathname.startsWith("/api/slack/")) {
+    return NextResponse.next()
+  }
+
   // Skip the magic-link callback; it authenticates with a single-use token in
   // the query string and is the request that creates the session. Without this,
   // the visitor arrives with no cookie, gets redirected to /login, and no magic
