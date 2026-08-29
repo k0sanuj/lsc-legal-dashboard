@@ -1,12 +1,13 @@
 {
   "display_information": {
-    "name": "LSC Legal",
-    "description": "Legal status answers and MNDA sending for League Sports Co.",
+    "name": "Autonomos",
+    "description": "Autonomos: agreements, signatures and legal status. From autos (self) and nomos (law).",
     "background_color": "#020617"
   },
   "features": {
+    "app_home": {},
     "bot_user": {
-      "display_name": "LSC Legal",
+      "display_name": "Autonomos",
       "always_online": true
     },
     "slash_commands": [
@@ -14,8 +15,8 @@
         "command": "/legal",
         "url": "https://lsc-legal-dashboard.vercel.app/api/slack/commands",
         "description": "Legal status, signatures in flight, agreement lookup",
-        "usage_hint": "[status | signatures | find <query> | help]",
-        "should_escape": false
+        "should_escape": false,
+        "usage_hint": "[status | signatures | find \u003cquery\u003e | help]"
       },
       {
         "command": "/mnda",
@@ -30,17 +31,19 @@
       "bot": [
         "commands",
         "chat:write",
-        "chat:write.public"
+        "chat:write.public",
+        "users:read",
+        "users:read.email"
       ]
     }
   },
   "settings": {
+    "socket_mode_enabled": false,
+    "org_deploy_enabled": false,
     "interactivity": {
       "is_enabled": true,
       "request_url": "https://lsc-legal-dashboard.vercel.app/api/slack/interactivity"
     },
-    "org_deploy_enabled": false,
-    "socket_mode_enabled": false,
     "token_rotation_enabled": false
   }
 }

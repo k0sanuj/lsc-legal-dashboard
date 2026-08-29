@@ -54,8 +54,8 @@ email side must match the person's AppUser email in the dashboard exactly.
 Create a channel named `#legal` (or reuse an existing one) and note its channel
 id for `SLACK_LEGAL_CHANNEL_ID`. Then either:
 
-- `/invite @LSC Legal` in the channel, or
-- `chat:write.public` covers public channels. A PRIVATE #legal channel requires inviting the bot with `/invite @LSC Legal`; no scope substitutes for the invite.
+- `/invite @Autonomos` in the channel, or
+- `chat:write.public` covers public channels. A PRIVATE #legal channel requires inviting the bot with `/invite @Autonomos`; no scope substitutes for the invite.
 
 Inviting the bot explicitly is the reliable option, and it is required if the
 channel is private. `SLACK_LEGAL_CHANNEL_ID` is the fallback destination for
@@ -78,7 +78,7 @@ Never commit these values; `.env*` stays untracked per AGENTS.md.
 
 The tracker notifier (src/lib/legal-tracker.ts) reads its own
 `LEGAL_TRACKER_SLACK_BOT_TOKEN` and `LEGAL_TRACKER_SLACK_CHANNEL`. If this same
-"LSC Legal" app is used for both, set `LEGAL_TRACKER_SLACK_BOT_TOKEN` to the
+"Autonomos" app is used for both, set `LEGAL_TRACKER_SLACK_BOT_TOKEN` to the
 same `xoxb-` value as `SLACK_BOT_TOKEN` and `LEGAL_TRACKER_SLACK_CHANNEL` to
 the same channel id as `SLACK_LEGAL_CHANNEL_ID`. The names stay separate on
 purpose: if the control surface ever needs scopes the notifier should not
