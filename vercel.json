@@ -24,5 +24,8 @@
       "path": "/api/cron/opensign-poll",
       "schedule": "0 7 * * *"
     }
+  ],
+  "regions": [
+    "sin1"
   ]
 }

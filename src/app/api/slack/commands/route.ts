@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server"
+import { after } from "next/server"
 import {
   openSlackModal,
   resolveSlackActor,
@@ -21,23 +22,63 @@ export const runtime = "nodejs"
  *
  * There is no user session here. Every request is authenticated with the Slack
  * signing secret over the RAW body, then authorised against the
- * SLACK_LEGAL_ADMINS allowlist via resolveSlackActor. A bad signature gets a
- * bare 401 because the request is not provably from Slack; an unauthorised but
- * genuine caller gets a 200 with an ephemeral refusal so the human learns why.
+ * SLACK_LEGAL_ADMINS allowlist via resolveSlackActor.
  *
- * Slack expects an answer within 3 seconds. /legal answers inline with
- * ephemeral blocks; /mnda only opens a modal (the trigger_id dies in 3s, so
- * views.open runs before anything slow) and the actual send happens on
- * view_submission in ../interactivity/route.ts.
+ * ACK-FIRST, measured, not theoretical: Slack's slash-command deadline is 3
+ * seconds, and a cold start of this function was measured at 4.7s end to end
+ * (US-East function, Singapore database), which surfaced to the caller as
+ * operation_timeout. So the response path now does ONLY signature
+ * verification, which needs no I/O, and acknowledges immediately. Everything
+ * that touches the database or the Slack Web API, the allowlist lookup
+ * included, runs inside after() and delivers its result through the
+ * response_url, which stays valid for 30 minutes.
  */
 
-/** Inline ephemeral answer to the slash command; only the caller sees it. */
-function ephemeral(text: string, blocks?: SlackBlock[]): Response {
-  return Response.json({ response_type: "ephemeral", text, ...(blocks ? { blocks } : {}) })
+interface SlashContext {
+  command: string
+  text: string
+  slackUserId: string
+  channelId: string
+  triggerId: string
+  responseUrl: string
 }
 
-function notAuthorised(): Response {
-  return ephemeral("You are not authorised to use the LSC Legal commands.")
+/** Immediate ephemeral ack; only the caller sees it. */
+function ack(text: string): Response {
+  return Response.json({ response_type: "ephemeral", text })
+}
+
+/**
+ * Delivers the real answer through the response_url, replacing the ack.
+ * Failures only console.error; there is nobody else to tell.
+ */
+async function respondVia(
+  responseUrl: string,
+  text: string,
+  blocks?: SlackBlock[]
+): Promise<void> {
+  if (!responseUrl) {
+    console.error("[slack] no response_url to deliver:", text)
+    return
+  }
+  try {
+    const res = await fetch(responseUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        response_type: "ephemeral",
+        replace_original: true,
+        text,
+        ...(blocks ? { blocks } : {}),
+      }),
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) {
+      console.error(`[slack] response_url delivery failed: HTTP ${res.status}`)
+    }
+  } catch (error) {
+    console.error("[slack] response_url delivery failed:", error)
+  }
 }
 
 /** Today in Asia/Dubai as YYYY-MM-DD; en-CA formats ISO dates. A 02:00 send in Dubai must not default to yesterday's UTC date. */
@@ -45,52 +86,63 @@ function todayInDubai(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(new Date())
 }
 
-async function handleLegalCommand(text: string): Promise<Response> {
-  const [subcommand = "", ...rest] = text.trim().split(/\s+/)
+/** The deferred work behind /legal. Runs in after(). */
+async function deliverLegalAnswer(ctx: SlashContext): Promise<void> {
+  const [subcommand = "", ...rest] = ctx.text.trim().split(/\s+/)
 
   switch (subcommand.toLowerCase()) {
     case "":
     case "status": {
       const summary = await legalStatusSummary()
-      return ephemeral("Legal status", buildLegalStatusBlocks(summary))
+      await respondVia(ctx.responseUrl, "Legal status", buildLegalStatusBlocks(summary))
+      return
     }
     case "signatures": {
       const inFlight = await signaturesInFlight()
-      return ephemeral("Signatures in flight", buildSignaturesBlocks(inFlight))
+      await respondVia(ctx.responseUrl, "Signatures in flight", buildSignaturesBlocks(inFlight))
+      return
     }
     case "find": {
       const query = rest.join(" ").trim()
-      if (!query) return ephemeral("Usage: /legal find <title or counterparty>")
+      if (!query) {
+        await respondVia(ctx.responseUrl, "Usage: /legal find <title or counterparty>")
+        return
+      }
       const hits = await agreementLookup(query)
-      return ephemeral(`Agreements matching "${query}"`, buildAgreementLookupBlocks(query, hits))
+      await respondVia(
+        ctx.responseUrl,
+        `Agreements matching "${query}"`,
+        buildAgreementLookupBlocks(query, hits)
+      )
+      return
     }
     default:
-      return ephemeral("/legal help", buildLegalHelpBlocks())
+      await respondVia(ctx.responseUrl, "/legal help", buildLegalHelpBlocks())
   }
 }
 
-async function handleMndaCommand(input: {
-  triggerId: string
-  channelId: string
+/** The deferred work behind /mnda: authorise, then open the modal. */
+async function deliverMndaModal(
+  ctx: SlashContext,
   actor: { userId: string; email: string; display: string }
-}): Promise<Response> {
+): Promise<void> {
   const view = buildMndaModalView({
     todayDubai: todayInDubai(),
     privateMetadata: JSON.stringify({
-      actorUserId: input.actor.userId,
-      actorEmail: input.actor.email,
-      actorDisplay: input.actor.display,
-      channelId: input.channelId,
+      actorUserId: actor.userId,
+      actorEmail: actor.email,
+      actorDisplay: actor.display,
+      channelId: ctx.channelId,
     }),
   })
 
-  const opened = await openSlackModal(input.triggerId, view)
+  const opened = await openSlackModal(ctx.triggerId, view)
   if (!opened.ok) {
+    // Most common cause: a cold start consumed the trigger_id's 3 second
+    // lifetime before views.open ran. The second attempt hits a warm instance.
     console.error("[slack] views.open failed:", opened.error)
-    return ephemeral("Could not open the MNDA form. Try /mnda again.")
+    await respondVia(ctx.responseUrl, "Could not open the MNDA form in time. Run /mnda once more.")
   }
-
-  return new Response(null, { status: 200 })
 }
 
 export async function POST(request: NextRequest) {
@@ -108,22 +160,41 @@ export async function POST(request: NextRequest) {
   }
 
   const params = new URLSearchParams(rawBody)
-  const command = params.get("command") ?? ""
-  const text = params.get("text") ?? ""
-  const slackUserId = params.get("user_id") ?? ""
-  const channelId = params.get("channel_id") ?? ""
-  const triggerId = params.get("trigger_id") ?? ""
-
-  try {
-    const actor = await resolveSlackActor(slackUserId)
-    if (!actor) return notAuthorised()
-
-    if (command === "/legal") return await handleLegalCommand(text)
-    if (command === "/mnda") return await handleMndaCommand({ triggerId, channelId, actor })
-
-    return ephemeral(`Unknown command ${command}.`)
-  } catch (error) {
-    console.error("[slack] command handling failed:", error)
-    return ephemeral("Something went wrong handling that command. Check the dashboard logs.")
+  const ctx: SlashContext = {
+    command: params.get("command") ?? "",
+    text: params.get("text") ?? "",
+    slackUserId: params.get("user_id") ?? "",
+    channelId: params.get("channel_id") ?? "",
+    triggerId: params.get("trigger_id") ?? "",
+    responseUrl: params.get("response_url") ?? "",
   }
+
+  if (ctx.command !== "/legal" && ctx.command !== "/mnda") {
+    return ack(`Unknown command ${ctx.command}.`)
+  }
+
+  // Everything below the ack, allowlist lookup included, is deferred: the
+  // response carries no data and therefore cannot miss the deadline.
+  after(async () => {
+    try {
+      const actor = await resolveSlackActor(ctx.slackUserId)
+      if (!actor) {
+        await respondVia(ctx.responseUrl, "You are not authorised to use the legal commands.")
+        return
+      }
+      if (ctx.command === "/legal") {
+        await deliverLegalAnswer(ctx)
+      } else {
+        await deliverMndaModal(ctx, actor)
+      }
+    } catch (error) {
+      console.error("[slack] deferred command handling failed:", error)
+      await respondVia(
+        ctx.responseUrl,
+        "Something went wrong handling that command. The details are in the dashboard logs."
+      )
+    }
+  })
+
+  return ack(ctx.command === "/mnda" ? "Opening the MNDA form..." : "On it...")
 }
