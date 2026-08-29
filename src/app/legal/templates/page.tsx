@@ -23,6 +23,7 @@ import {
 } from "lucide-react"
 import type { DocumentCategory, Entity } from "@/generated/prisma/client"
 import { CreateTemplateDialog } from "@/components/legal/create-template-dialog"
+import { SendMndaDialog } from "@/components/legal/send-mnda-dialog"
 
 const CATEGORY_LABELS: Partial<Record<DocumentCategory, string>> = {
   SPONSORSHIP: "Sponsorship",
@@ -81,6 +82,7 @@ export default async function TemplatesPage({
         <div className="flex items-center gap-2">
           {isAdmin && (
             <>
+              <SendMndaDialog />
               <CreateTemplateDialog mode="upload" />
               <CreateTemplateDialog mode="manual" />
             </>

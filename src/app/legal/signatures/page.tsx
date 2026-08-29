@@ -5,6 +5,7 @@ import { ENTITIES } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { getOpenSignSetupStatus } from "@/lib/opensign"
 import { SignatureKanban } from "@/components/legal/signature-kanban"
+import { SendMndaDialog } from "@/components/legal/send-mnda-dialog"
 import type { LifecycleStatus } from "@/generated/prisma/client"
 
 const DOCUMENT_COLUMNS = [
@@ -185,11 +186,14 @@ export default async function SignaturesPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Signatures</h1>
-        <p className="text-sm text-muted-foreground">
-          Full agreement pipeline — from draft to signed. Drag cards to update status.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Signatures</h1>
+          <p className="text-sm text-muted-foreground">
+            Full agreement pipeline — from draft to signed. Drag cards to update status.
+          </p>
+        </div>
+        <SendMndaDialog />
       </div>
 
       {/* Entity filter */}
