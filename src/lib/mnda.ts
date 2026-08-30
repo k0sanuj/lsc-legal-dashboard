@@ -430,7 +430,12 @@ export async function sendMnda(params: MndaSendParams, actor: MndaSendActor): Pr
       sentByEmail: actor.email,
       appBaseUrl: getAppBaseUrl(),
     })
-    after(async () => {
+    // after() throws synchronously outside a Next request scope (scripts,
+    // tests). By this point the document exists and invitations are out, so a
+    // scheduling failure must never convert a completed send into a reported
+    // failure; it only costs the channel notice.
+    try {
+      after(async () => {
       try {
         // The notifier reports delivery failure by return value, not by
         // throwing, so an unchecked result would be a silent miss.
@@ -447,7 +452,10 @@ export async function sendMnda(params: MndaSendParams, actor: MndaSendActor): Pr
       } catch (err) {
         console.error("Legal tracker notification failed (non-blocking):", err)
       }
-    })
+      })
+    } catch (err) {
+      console.error("Could not schedule the tracker notification (non-blocking):", err)
+    }
 
     return {
       success: true,

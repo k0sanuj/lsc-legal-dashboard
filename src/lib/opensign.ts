@@ -113,6 +113,8 @@ export interface OpenSignCreateDocumentResult {
   providerDocumentId: string
   raw: unknown
   signingLinks: Record<string, string>
+  /** The document's URL in OpenSign's own file store; a durable fallback when S3 is unavailable. */
+  providerFileUrl: string
 }
 
 export interface OpenSignSetupStatus {
@@ -689,7 +691,7 @@ export async function createOpenSignDocument(
     }
   }
 
-  return { providerDocumentId, raw: created, signingLinks, invitationFailures }
+  return { providerDocumentId, raw: created, signingLinks, invitationFailures, providerFileUrl: fileUrl }
 }
 
 /** Plain, provider-neutral invitation body. No tracking, no external assets. */
