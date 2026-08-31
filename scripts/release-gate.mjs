@@ -5,6 +5,7 @@ const commands = [
   ["node", ["scripts/check-agent-hygiene.mjs"]],
   ["npx", ["prisma", "validate"]],
   ["npx", ["tsc", "--noEmit"]],
+  ["npx", ["tsx", "scripts/verify-mnda-render.ts"]],
   ["npm", ["run", "lint"]],
   ["npm", ["run", "build"]],
 ]

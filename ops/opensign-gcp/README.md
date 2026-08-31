@@ -70,8 +70,12 @@ me-central1. Billing account `01093C-C0D401-782C53`.
 
 ## Known gaps
 
-- The document-sealing certificate is whatever ships in the upstream image. Supply a real
-  `PFX_BASE64` and `PASS_PHRASE` before treating OpenSign signatures as cryptographically sealed by
-  League Sports Co.
+- The document-sealing certificate is a self-signed FSP p12 (CN "Future Of Sports Labs Inc.
+  Document Sealing", valid to 2031-08-30), set 2026-08-31 after its absence crashed every signing
+  completion. Source of truth: Secret Manager secrets `OPENSIGN_PFX_BASE64` and
+  `OPENSIGN_PFX_PASSPHRASE` in project `fresh-authority-499619-r7`. Re-exports must use
+  `openssl pkcs12 -export -legacy`; node-forge inside `@signpdf/signer-p12` cannot parse
+  OpenSSL 3's default AES-256 p12 encryption. Self-signed means PDF readers show "validity
+  unknown"; swap in a CA-issued document-signing certificate for third-party-verifiable seals.
 - SSH is open to `0.0.0.0/0` by default. Pass `SSH_SOURCE_RANGE=<your-cidr>/32` to narrow it.
 - No MongoDB backup schedule, as noted above.

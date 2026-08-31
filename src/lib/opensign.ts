@@ -663,7 +663,7 @@ export async function createOpenSignDocument(
   // so `from` must be a DISPLAY NAME ONLY, never an address in brackets.
   const invitationFailures: Record<string, string> = {}
   const ccList = [...seenCc]
-  for (const { signer, contact } of resolved) {
+  for (const { signer } of resolved) {
     const email = signer.email.trim().toLowerCase()
     const link = signingLinks[email]
     if (!link) continue
@@ -676,11 +676,6 @@ export async function createOpenSignDocument(
           subject: `Signature requested: ${input.title.slice(0, 180)}`,
           text: `${signer.name}, you have been asked to sign "${input.title}". Open ${link} to review and sign.`,
           html: buildInvitationHtml(signer.name, input.title, link, input.note),
-          // Cc rides on the counterparty invitation only, so cc'd colleagues
-          // see the request without being spammed once per signer.
-          ...(ccList.length > 0 && resolved[0]?.contact.objectId === contact.objectId
-            ? { cc: ccList.join(",") }
-            : {}),
         })
       )
       if (asString(mail.status) !== "success") {
@@ -691,7 +686,41 @@ export async function createOpenSignDocument(
     }
   }
 
+  // Cc'd colleagues get a plain heads-up with NO signing link. A signing link
+  // IS the signer's identity (the guest route authenticates purely on it), so
+  // cc-ing it onto an invitation lets any cc recipient sign as the
+  // counterparty; that happened in production on 2026-08-30. The signed copy
+  // still reaches cc through the document's Cc contact pointers at completion.
+  if (ccList.length > 0) {
+    try {
+      const mail = asRecord(
+        await callFunction("sendmailv3", {
+          extUserId: extUser.objectId,
+          from: input.senderDisplayName?.slice(0, 80) ?? "LSC Legal",
+          recipient: ccList.join(","),
+          subject: `Sent for signature: ${input.title.slice(0, 180)}`,
+          text: `You are cc'd on "${input.title}". It has been sent for signature; you will receive the completed copy once everyone has signed.`,
+          html: buildCcNoticeHtml(input.title),
+        })
+      )
+      if (asString(mail.status) !== "success") {
+        invitationFailures["cc"] = asString(mail.status) ?? "unknown sendmailv3 response"
+      }
+    } catch (error) {
+      invitationFailures["cc"] = error instanceof Error ? error.message : String(error)
+    }
+  }
+
   return { providerDocumentId, raw: created, signingLinks, invitationFailures, providerFileUrl: fileUrl }
+}
+
+/** Cc heads-up body: names the document, carries no link on purpose. */
+function buildCcNoticeHtml(title: string): string {
+  const safeTitle = title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  return [
+    `<p>You are cc'd on <strong>${safeTitle}</strong>.</p>`,
+    "<p>It has been sent for signature. You will receive the completed copy once everyone has signed.</p>",
+  ].join("")
 }
 
 /** Plain, provider-neutral invitation body. No tracking, no external assets. */

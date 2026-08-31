@@ -135,11 +135,27 @@ function parseIsoDate(iso: string): { year: number; month: number; day: number }
  * binding document.
  */
 function escapeFieldTokens(value: string): string {
-  return value.replaceAll("[[", "[ [")
+  // A space after EVERY "[" that precedes another "[". Unlike a plain
+  // replaceAll("[[", "[ ["), which only breaks non-overlapping pairs and lets
+  // an odd run like "[[[FIELD:..." keep an intact "[[" seam, this leaves no
+  // adjacent "[[" anywhere in the output, so no token can survive.
+  return value.replace(/\[(?=\[)/g, "[ ")
 }
 
-function substituteVariables(content: string, values: Record<string, string>): string {
+/**
+ * `values` are user input and get their field-token openers broken up;
+ * `rawValues` are authored by this pipeline (never by a user) and go in
+ * verbatim, which is how the blank-passport fill-in token survives. A raw key
+ * wins over an escaped one.
+ */
+function substituteVariables(
+  content: string,
+  values: Record<string, string>,
+  rawValues: Record<string, string> = {}
+): string {
   return content.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key: string) => {
+    const raw = rawValues[key.toLowerCase()]
+    if (raw != null) return raw
     const value = values[key.toLowerCase()]
     return value != null ? escapeFieldTokens(value) : match
   })
@@ -221,17 +237,20 @@ function buildSignatureBlock(
       designationLine: "Designation: Director",
       date: { name: "fsp_date", label: "Date:", widthPt: 100, heightPt: 18 },
     },
+    // The renderer parses [[FIELD:...]] tokens in signature-block lines the
+    // same as in body text, so every user-derived string here is escaped.
     right: {
-      heading:
+      heading: escapeFieldTokens(
         params.templateKind === "business"
           ? params.counterpartyCompany!.trim()
-          : params.counterpartyName.trim(),
+          : params.counterpartyName.trim()
+      ),
       lines:
         params.templateKind === "business"
-          ? [`Address: ${params.counterpartyAddress!.trim()}`, `Email: ${counterpartyEmail}`]
-          : [`Email: ${counterpartyEmail}`],
+          ? [escapeFieldTokens(`Address: ${params.counterpartyAddress!.trim()}`), escapeFieldTokens(`Email: ${counterpartyEmail}`)]
+          : [escapeFieldTokens(`Email: ${counterpartyEmail}`)],
       signature: { name: "cp_signature", label: "Signature:", widthPt: 160, heightPt: 50 },
-      byLine: `By: ${params.counterpartyName.trim()}`,
+      byLine: escapeFieldTokens(`By: ${params.counterpartyName.trim()}`),
       date: { name: "cp_date", label: "Date:", widthPt: 100, heightPt: 18 },
     },
   }
@@ -250,6 +269,53 @@ function placement(
     type,
     required: true,
   }
+}
+
+/**
+ * Pure render step: template content in, PDF plus anchors out. Exported so the
+ * render can be verified without a database or OpenSign; sendMnda is its only
+ * production caller.
+ *
+ * substituteVariables escapes "[[" in every user value so user input can never
+ * forge a field token; the blank-passport token is OURS and rides the separate
+ * rawValues channel. Routing it through the escaping phase with the user
+ * values is exactly the bug that shipped a literal "[ [FIELD:cp_passport:120]]"
+ * into a rendered agreement on 2026-08-30.
+ */
+export async function renderMndaPdf(
+  content: string,
+  params: MndaSendParams,
+  ctx: {
+    counterpartyEmail: string
+    counterpartyName: string
+    effectiveDatePretty: string
+    passport: string
+    signerName: string
+    signerEmail: string
+  }
+) {
+  const substituted = substituteVariables(
+    content,
+    {
+      effective_date: ctx.effectiveDatePretty,
+      counterparty_name: ctx.counterpartyName,
+      counterparty_company: params.counterpartyCompany?.trim() ?? "",
+      counterparty_address: params.counterpartyAddress?.trim() ?? "",
+      counterparty_passport_number: ctx.passport,
+      term_years: String(params.termYears),
+      term_words: TERM_WORDS[params.termYears],
+    },
+    // Left blank, the passport number becomes a required fill-in field the
+    // counterparty completes during signing.
+    ctx.passport ? {} : { counterparty_passport_number: `[[FIELD:cp_passport:${PASSPORT_FIELD_WIDTH}]]` }
+  )
+
+  const { title: contractTitle, body } = splitTemplate(substituted)
+  return renderContractPdf({
+    title: contractTitle,
+    bodyText: body,
+    signatureBlock: buildSignatureBlock(params, ctx.counterpartyEmail, ctx.signerName, ctx.signerEmail),
+  })
 }
 
 /**
@@ -282,24 +348,13 @@ export async function sendMnda(params: MndaSendParams, actor: MndaSendActor): Pr
 
   try {
     const { content, templateId } = await loadTemplateContent(params.templateKind)
-
-    const substituted = substituteVariables(content, {
-      effective_date: effectiveDatePretty,
-      counterparty_name: counterpartyName,
-      counterparty_company: params.counterpartyCompany?.trim() ?? "",
-      counterparty_address: params.counterpartyAddress?.trim() ?? "",
-      // Left blank, the passport number becomes a required fill-in field the
-      // counterparty completes during signing.
-      counterparty_passport_number: passport || `[[FIELD:cp_passport:${PASSPORT_FIELD_WIDTH}]]`,
-      term_years: String(params.termYears),
-      term_words: TERM_WORDS[params.termYears],
-    })
-
-    const { title: contractTitle, body } = splitTemplate(substituted)
-    const rendered = await renderContractPdf({
-      title: contractTitle,
-      bodyText: body,
-      signatureBlock: buildSignatureBlock(params, counterpartyEmail, signerName, signerEmail),
+    const rendered = await renderMndaPdf(content, params, {
+      counterpartyEmail,
+      counterpartyName,
+      effectiveDatePretty,
+      passport,
+      signerName,
+      signerEmail,
     })
 
     const requiredAnchors = ["cp_signature", "cp_date", "fsp_signature", "fsp_date"]
