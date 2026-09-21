@@ -40,3 +40,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
   removed that future task. Reread and accept only a surviving COMPLETED record.
 - Certificate retries use request binding and a checked-at lease token. An older
   failure must never overwrite a newer stored receipt.
+
+- Release verification from the non-root runtime image needs a writable temporary
+  workspace and the isolated `legal_os_v2_verify_` database. The hygiene gate
+  queries runtime schema tables; a fake connection URL is insufficient. Reject
+  production database targets, omit storage/mail/Slack/provider secrets, and
+  remove the temporary job after verification.
