@@ -5,14 +5,14 @@ import { KycDocStatus, LitigationStatus } from '@/generated/prisma/client'
 import { requireGlobalDocumentAccess, requestDocumentAccess } from '@/lib/document-access'
 import { listDocumentAccessRequests, decideDocumentAccess, revokeDocumentGrant } from '@/lib/document-access-management'
 import { listEntityProfiles, setKycVerification } from '@/lib/entity-service'
-import { listReviewTasks, completeReviewTask, signalReviewChange } from '@/lib/review-service'
+import { listReviewTasks, listReviewSchedules, completeReviewTask, signalReviewChange } from '@/lib/review-service'
 import { listDisputes, setDisputeStatus } from '@/lib/dispute-service'
 import { queueDocumentExport, listDocumentExports } from '@/lib/document-exports'
 import { searchLegalDrive } from '@/lib/drive-retrieval'
 import { readGenerationJob, cancelGenerationJob, requestTemplateGeneration, requestRefinement } from '@/lib/contract-generation-queue'
 import { saveTextTemplate, readTextTemplate } from '@/lib/template-service'
 import { saveEntityProfileForSession, saveEntityFilingForSession, saveEntityOwnershipForSession, linkKycToEntityForSession } from '@/lib/entity-record-service'
-import { createReviewScheduleForSession, importReviewDependenciesForSession, setReviewScheduleActiveForSession, createInternalPolicyForSession } from '@/lib/review-schedule-service'
+import { createReviewScheduleForSession, saveReviewScheduleForSession, importReviewDependenciesForSession, setReviewScheduleActiveForSession, createInternalPolicyForSession } from '@/lib/review-schedule-service'
 import { proposeArtifactNameForActor, approveArtifactNameForActor, finalizeArtifactForActor, publishArtifactForActor, updateArtifactLineageForActor, updateNativeAmountForActor } from '@/lib/repository-service'
 import { documentScope } from '@/lib/document-access'
 import { isRecord } from '@/lib/contract-generation-protocol'
@@ -33,14 +33,16 @@ export const SLACK_OPERATION_INVENTORY = [
   { operation: 'Contract drafting and refinement', command: 'generate / refine / job / cancel', mode: 'write', readiness: 'requires authenticated Codex worker' },
   { operation: 'Deterministic MNDA signing', command: '/mnda', mode: 'write', readiness: 'existing integration' },
   { operation: 'Edit entity records and shareholding', command: 'entity-save / filing-save / ownership-save / kyc-link', mode: 'write', readiness: 'implemented' },
-  { operation: 'Edit templates and review schedules', command: 'template-save / schedule-create / dependencies / policy-create', mode: 'write', readiness: 'implemented' },
+  { operation: 'Edit templates and review schedules', command: 'template-save / schedules / schedule-save / dependencies / policy-create', mode: 'write', readiness: 'implemented' },
   { operation: 'Final approval and publication', command: 'name-propose / name-approve / artifact-finalize / artifact-publish', mode: 'write', readiness: 'requires approved Drive destination' },
   { operation: 'Mailbox and account administration', command: '/legal/admin-accounts', mode: 'dashboard', readiness: 'dashboard' },
 ] as const
 
 export const SLACK_HELP = `Legal commands (answers are private):
 / legal find <title or counterparty>
-/ legal status | signatures | entities | reviews | access | exports | coverage
+/ legal status | signatures | entities | reviews | schedules | access | exports | coverage
+/ legal entities <entity-id>  (includes ownership IDs and source references)
+/ legal schedules <schedule-id>  (editable fields and current revision)
 / legal drive <name>  (approved Drive sources only)
 / legal request <reference> -- <reason>
 / legal approve <request-id> <document-id> <expiry YYYY-MM-DD>
@@ -56,7 +58,7 @@ export const SLACK_HELP = `Legal commands (answers are private):
 / legal job <job-id> | cancel <job-id>
 / legal export
 / legal entity-save | filing-save | ownership-save | kyc-link -- <fields JSON>
-/ legal schedule-create | schedule-active | dependencies | policy-create -- <fields JSON>
+/ legal schedule-create | schedule-save | schedule-active | dependencies | policy-create -- <fields JSON>
 / legal template <id> | template-save -- <complete template JSON>
 / legal artifacts <document-id>
 / legal name-propose | name-approve | artifact-finalize | artifact-publish | artifact-lineage | amount -- <fields JSON>
@@ -77,6 +79,7 @@ const formHelp: Record<string, string> = {
   'ownership-save': 'owned_entity_id, source_reference, either owner_entity_id or owner_name; optional id, percentage (decimal string), effective_date',
   'kyc-link': 'kyc_document_id, entity_profile_id',
   'schedule-create': 'title, kind (PUBLIC|INTERNAL), start_date YYYY-MM-DD, owner_id, source_reference; PUBLIC needs document_id and steady_interval_months; INTERNAL needs policy_id and interval_months (4|5|6)',
+  'schedule-save': 'All fields from /legal schedules <id>, including id and exact expected_updated_at. Edits may change title, owner_id, interval_months, steady_interval_months, source_reference. Kind, start_date, document_id and policy_id stay bound to the original schedule. Omit id and expected_updated_at to create.',
   'schedule-active': 'schedule_id, active (true|false)',
   dependencies: 'rows (array of source_schedule_id,target_schedule_id), source_reference',
   'policy-create': 'title, effective_date YYYY-MM-DD, content; optional acknowledgment_required (true|false)',
@@ -95,6 +98,7 @@ const formOperations = {
   'ownership-save': saveEntityOwnershipForSession,
   'kyc-link': linkKycToEntityForSession,
   'schedule-create': createReviewScheduleForSession,
+  'schedule-save': saveReviewScheduleForSession,
   'schedule-active': setReviewScheduleActiveForSession,
   dependencies: importReviewDependenciesForSession,
   'policy-create': createInternalPolicyForSession,
@@ -166,11 +170,25 @@ export async function executeSlackOperation(actor: SessionPayload, command: stri
       return 'Document grant revoked.'
     case 'entities': {
       const entities = await listEntityProfiles(actor)
-      return lines(entities.map(entity => [entity.id, entity.legacy_entity, entity.legal_name, entity.registration_number, `Filings ${entity._count.filings}`, `KYC ${entity._count.kyc_documents}`]), 'No entity profiles recorded.')
+      if (args.length > 1) throw new Error('Usage: entities [entity-id]')
+      if (args[0]) {
+        const entity = entities.find(row => row.id === args[0])
+        return entity ? escapeSlack(JSON.stringify({ entity, ownership: entity.owned_by.map(ownership => ({ id: ownership.id, owned_entity_id: entity.id, owner_entity_id: ownership.owner_entity_id, owner_name: ownership.owner_name, percentage: ownership.percentage?.toString() ?? null, effective_date: ownership.effective_date?.toISOString().slice(0, 10) ?? null, source_reference: ownership.source_reference })) })) : 'Entity is unavailable.'
+      }
+      return lines(entities.map(entity => [entity.id, entity.legacy_entity, entity.legal_name, entity.registration_number, `Filings ${entity._count.filings}`, `KYC ${entity._count.kyc_documents}`, `Ownership IDs: ${entity.owned_by.map(ownership => ownership.id).join(', ') || 'none'}`]), 'No entity profiles recorded.')
     }
     case 'reviews': {
       const tasks = await listReviewTasks(actor)
-      return lines(tasks.map(task => [task.id, task.schedule.title, task.schedule.kind, task.due_date.toISOString().slice(0, 10)]), 'No open review tasks.')
+      return lines(tasks.map(task => [task.id, task.schedule_id, task.schedule.title, task.schedule.kind, task.due_date.toISOString().slice(0, 10)]), 'No open review tasks.')
+    }
+    case 'schedules': {
+      if (args.length > 1) throw new Error('Usage: schedules [schedule-id]')
+      const schedules = await listReviewSchedules(actor)
+      if (args[0]) {
+        const schedule = schedules.find(row => row.id === args[0])
+        return schedule ? escapeSlack(JSON.stringify({ id: schedule.id, title: schedule.title, kind: schedule.kind, start_date: schedule.start_date.toISOString().slice(0, 10), owner_id: schedule.owner_id, document_id: schedule.document_id, policy_id: schedule.policy_id, interval_months: schedule.interval_months, steady_interval_months: schedule.steady_interval_months, source_reference: schedule.source_reference, expected_updated_at: schedule.updated_at.toISOString() })) : 'Schedule is unavailable.'
+      }
+      return lines(schedules.map(schedule => [schedule.id, schedule.title, schedule.kind, schedule.active ? 'active' : 'inactive', `revision ${schedule.updated_at.toISOString()}`]), 'No review schedules recorded.')
     }
     case 'review-complete':
       if (args.length !== 1) throw new Error('Usage: review-complete <task-id> -- <evidence>')

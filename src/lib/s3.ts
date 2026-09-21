@@ -16,7 +16,7 @@
  * s3.amazonaws.com. That AWS account is retired, so getS3KeyFromUrl returns
  * null for them and protected readers report an unavailable legacy source.
  */
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import {
   S3Client,
   PutObjectCommand,
@@ -29,12 +29,13 @@ import { stat } from "node:fs/promises"
 
 const GCS_ENDPOINT = "https://storage.googleapis.com"
 
-function getS3Client() {
+function getS3Client(requestChecksumCalculation?: "WHEN_REQUIRED") {
   return new S3Client({
     endpoint: GCS_ENDPOINT,
     // GCS's interop layer accepts SigV4 with the auto region.
     region: "auto",
     forcePathStyle: true,
+    requestChecksumCalculation,
     credentials: {
       accessKeyId: process.env.GCS_HMAC_ACCESS_ID!,
       secretAccessKey: process.env.GCS_HMAC_SECRET!,
@@ -82,10 +83,18 @@ export async function uploadBufferToS3(
 /** File-backed upload keeps large export archives out of process memory. */
 export async function uploadLocalFileToS3(localPath: string, key: string, contentType: string) {
   const info = await stat(localPath)
-  await getS3Client().send(new PutObjectCommand({
-    Bucket: getBucketName(), Key: key, Body: createReadStream(localPath),
-    ContentLength: info.size, ContentType: contentType,
-  }))
+  // GCS XML rejects AWS's optional streaming checksum trailers. Content-MD5
+  // preserves provider-validated integrity without buffering the archive.
+  const checksum = createHash("md5")
+  for await (const chunk of createReadStream(localPath)) checksum.update(chunk)
+  const body = createReadStream(localPath)
+  try {
+    await getS3Client("WHEN_REQUIRED").send(new PutObjectCommand({
+      Bucket: getBucketName(), Key: key, Body: body,
+      ContentLength: info.size, ContentType: contentType,
+      ContentMD5: checksum.digest("base64"),
+    }))
+  } finally { body.destroy() }
   return getPublicUrl(key)
 }
 

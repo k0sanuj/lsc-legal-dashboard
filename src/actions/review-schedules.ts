@@ -3,10 +3,16 @@
 /** Cookie-authenticated dashboard adapters for shared review operations. */
 import { requireSession } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
-import { createReviewScheduleForSession, finishReviewForSession, refreshReviewTasksForSession, importReviewDependenciesForSession, recordReviewChangeForSession, setReviewScheduleActiveForSession, createInternalPolicyForSession } from '@/lib/review-schedule-service'
+import { createReviewScheduleForSession, saveReviewScheduleForSession, finishReviewForSession, refreshReviewTasksForSession, importReviewDependenciesForSession, recordReviewChangeForSession, setReviewScheduleActiveForSession, createInternalPolicyForSession } from '@/lib/review-schedule-service'
 
 export async function createReviewSchedule(form: FormData) {
   const result = await createReviewScheduleForSession(await requireSession(), form)
+  revalidatePath('/legal/compliance/reviews')
+  return result
+}
+
+export async function saveReviewSchedule(form: FormData) {
+  const result = await saveReviewScheduleForSession(await requireSession(), form)
   revalidatePath('/legal/compliance/reviews')
   return result
 }

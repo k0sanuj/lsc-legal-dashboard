@@ -121,21 +121,36 @@ const boundary = (name) => async (who, form) => {
 }
 const opImports = {
   '@/lib/prisma': { prisma: {} }, '@/generated/prisma/client': { KycDocStatus: {}, LitigationStatus: {} },
-  '@/lib/document-access': access, '@/lib/document-access-management': {}, '@/lib/entity-service': {}, '@/lib/review-service': {}, '@/lib/dispute-service': {}, '@/lib/document-exports': {}, '@/lib/drive-retrieval': {}, '@/lib/contract-generation-queue': {}, '@/lib/contract-generation-protocol': protocol,
+  '@/lib/document-access': access, '@/lib/document-access-management': {},
+  '@/lib/entity-service': { async listEntityProfiles(who) { await access.requireGlobalDocumentAccess(who); return [{ id: 'entity-id', legal_name: 'Synthetic Entity', _count: { filings: 0, kyc_documents: 0 }, owned_by: [{ id: 'ownership-id', owner_entity_id: null, owner_name: 'Synthetic Owner', percentage: '37.1234', effective_date: null, source_reference: 'Exact ownership source' }] }] } },
+  '@/lib/review-service': { async listReviewSchedules(who) { await access.requireGlobalDocumentAccess(who); return [{ id: 'schedule-id', title: 'Synthetic review', kind: 'PUBLIC', active: true, start_date: new Date('2026-09-21T00:00:00Z'), updated_at: new Date('2026-09-21T01:02:03.456Z'), owner_id: 'owner-id', document_id: 'document-id', policy_id: null, interval_months: null, steady_interval_months: 6, source_reference: 'Exact review source' }] } },
+  '@/lib/dispute-service': {}, '@/lib/document-exports': {}, '@/lib/drive-retrieval': {}, '@/lib/contract-generation-queue': {}, '@/lib/contract-generation-protocol': protocol,
   '@/lib/template-service': {},
   '@/lib/entity-record-service': Object.fromEntries(['saveEntityProfileForSession','saveEntityFilingForSession','saveEntityOwnershipForSession','linkKycToEntityForSession'].map(name => [name,boundary(name)])),
-  '@/lib/review-schedule-service': Object.fromEntries(['createReviewScheduleForSession','importReviewDependenciesForSession','setReviewScheduleActiveForSession','createInternalPolicyForSession'].map(name => [name,boundary(name)])),
+  '@/lib/review-schedule-service': Object.fromEntries(['createReviewScheduleForSession','saveReviewScheduleForSession','importReviewDependenciesForSession','setReviewScheduleActiveForSession','createInternalPolicyForSession'].map(name => [name,boundary(name)])),
   '@/lib/repository-service': Object.fromEntries(['proposeArtifactNameForActor','approveArtifactNameForActor','finalizeArtifactForActor','publishArtifactForActor','updateArtifactLineageForActor','updateNativeAmountForActor'].map(name => [name,boundary(name)])),
 }
 const operations = load('src/lib/slack-operations.ts', opImports)
-for (const command of ['entity-save','filing-save','ownership-save','kyc-link','schedule-create','schedule-active','dependencies','policy-create','name-propose','name-approve','artifact-finalize','artifact-publish','artifact-lineage','amount']) {
-  await operations.executeSlackOperation(actor, command, ' -- {"value":"100000000000000000.12","reference":"Exact  spacing\\nnext line"}', 'request')
+for (const command of ['entity-save','filing-save','ownership-save','kyc-link','schedule-create','schedule-save','schedule-active','dependencies','policy-create','name-propose','name-approve','artifact-finalize','artifact-publish','artifact-lineage','amount']) {
+  await operations.executeSlackOperation(actor, command, ' -- {"value":"100000000000000000.12","reference":"Exact  spacing\\nnext line","expected_updated_at":"2026-09-21T01:02:03.456Z"}', 'request')
 }
-assert.equal(dispatches.length, 14)
+assert.equal(dispatches.length, 15)
 assert.ok(dispatches.every(call => call.values.value === '100000000000000000.12' && call.values.reference === 'Exact  spacing\nnext line' && call.actor === actor.userId))
 await assert.rejects(() => operations.executeSlackOperation(actor, 'amount', ' -- {"value":100000000000000000.12}', 'request'), /decimal string/)
 await assert.rejects(() => operations.executeSlackOperation(actor, 'amount', ' -- {"currency":"USD"}', 'request'), /Provide value/)
 await assert.rejects(() => operations.executeSlackOperation({ ...actor, userId: 'outsider' }, 'entity-save', ' -- {"legal_name":"Not allowed"}', 'request'), /Access denied/)
-assert.equal(dispatches.length, 14)
+assert.equal(dispatches.length, 15)
+assert.equal(dispatches.find(call => call.name === 'saveReviewScheduleForSession').values.expected_updated_at, '2026-09-21T01:02:03.456Z')
+assert.match(await operations.executeSlackOperation(actor, 'entities', '', 'read'), /Ownership IDs: ownership-id/)
+const ownership = JSON.parse(await operations.executeSlackOperation(actor, 'entities', 'entity-id', 'read')).ownership[0]
+assert.equal(ownership.id, 'ownership-id')
+assert.equal(ownership.percentage, '37.1234')
+assert.equal(ownership.source_reference, 'Exact ownership source')
+assert.match(await operations.executeSlackOperation(actor, 'schedules', '', 'read'), /schedule-id.*revision 2026-09-21T01:02:03.456Z/)
+const schedule = JSON.parse(await operations.executeSlackOperation(actor, 'schedules', 'schedule-id', 'read'))
+assert.equal(schedule.expected_updated_at, '2026-09-21T01:02:03.456Z')
+assert.equal(schedule.start_date, '2026-09-21')
+assert.equal(schedule.document_id, 'document-id')
+for (const command of ['entities', 'schedules']) await assert.rejects(() => operations.executeSlackOperation({ ...actor, userId: 'outsider' }, command, '', 'read'), /Access denied/)
 assert.equal(operations.SLACK_OPERATION_INVENTORY.filter(item => item.mode !== 'dashboard').length, 17)
-console.log('Slack write adapter checks passed: 14 service dispatches retain caller identity and exact decimal/text fields; numeric amounts, omitted amount and unauthorized caller rejected before mutation. 17 of 18 inventory workflows have commands, live completion remains a separate acceptance gate.')
+console.log('Slack adapter checks passed: 15 write service dispatches retain caller identity and exact decimal/text/revision fields; ownership IDs and editable schedule revisions are discoverable; numeric amounts, omitted amount and unauthorized callers rejected. 17 of 18 inventory workflows have commands, live completion remains a separate acceptance gate.')

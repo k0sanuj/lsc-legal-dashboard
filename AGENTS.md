@@ -23,3 +23,20 @@ This version has breaking changes — APIs, conventions, and file structure may 
   Prisma migration history, so do not blindly apply a baseline-less deploy.
 - Real provider authentication must be verified on the worker, independently of
   local CLI login. A synthetic wrapper test is not a live provider receipt.
+- Cancel subprocesses by retaining SIGKILL escalation until process close. Node's
+  built-in spawn AbortSignal can reject before a stubborn child exits.
+- Preserve the exact template bytes before rendering/signature submission, including
+  clearly identified unapproved fallback sources. Mutable template IDs are not provenance.
+- GCS throttles repeated mutations of one object. Backfill progress uses immutable
+  checkpoints and writes its final manifest once.
+- GCS XML rejects the AWS SDK's optional `aws-chunked` checksum trailer on file
+  uploads, even with `ContentLength` supplied. File-backed exports use
+  `requestChecksumCalculation: "WHEN_REQUIRED"`, fixed length and a streamed
+  precomputed `ContentMD5`. Keep the provider integrity check and bounded memory;
+  a successful Buffer upload does not prove the file-stream path works.
+- Import the specific Google API client and google-auth-library, not the umbrella
+  googleapis module; the latter exhausted local compiler memory during this release.
+- A zero-row completion update does not prove success: a cadence edit may have
+  removed that future task. Reread and accept only a surviving COMPLETED record.
+- Certificate retries use request binding and a checked-at lease token. An older
+  failure must never overwrite a newer stored receipt.

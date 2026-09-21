@@ -23,7 +23,7 @@ const original = 'SYNTHETIC MNDA\nExact UTF-8 source: café.\n{{counterparty_nam
 const pdf = Buffer.from('synthetic PDF bytes')
 const params = { templateKind: 'individual', counterpartyName: 'Synthetic Person', counterpartyEmail: 'person@example.invalid', ccEmails: [], termYears: 2, effectiveDate: '2026-09-21' }
 
-function fixture({ fallback = false, failArtifact = '', failReceipt = false, failUpload = false, invalidReview = false } = {}) {
+function fixture({ fallback = false, failArtifact = '', failReceipt = false, failUpload = false, invalidReview = false, variables = {} } = {}) {
   let committed = { documents: [], artifacts: [], templates: [], versions: [], events: [], job: null }
   const uploads = []
   let providerCalls = 0
@@ -106,7 +106,7 @@ function fixture({ fallback = false, failArtifact = '', failReceipt = false, fai
     '@/lib/document-artifacts': artifacts, '@/lib/s3': storage, '@/lib/contract-generation-protocol': protocol,
   })
   const generatedContent = 'Both parties protect confidential information.'
-  const source = { templateId: 'db-template', template: original, entity: 'FSP', category: 'NDA', variables: {} }
+  const source = { templateId: 'db-template', template: original, entity: 'FSP', category: 'NDA', variables }
   const actions = load('src/actions/generate.ts', {
     'node:crypto': crypto, '@/lib/auth': { requireRole: async () => actor }, '@/lib/prisma': { prisma },
     '@/lib/contract-generation': { CONTRACT_GENERATION_PAUSED: true, CONTRACT_GENERATION_PAUSED_MESSAGE: 'Paused' },
@@ -118,7 +118,7 @@ function fixture({ fallback = false, failArtifact = '', failReceipt = false, fai
     } },
     '@/lib/s3': storage, '@/lib/document-artifacts': artifacts, '@/lib/contract-generation-protocol': protocol, '@/lib/template-service': templateService,
   })
-  return { mnda, actions, generatedContent, uploads, state: () => committed, providerCalls: () => providerCalls, providerSawSource: () => providerSawSource }
+  return { mnda, actions, generatedContent, variables, uploads, state: () => committed, providerCalls: () => providerCalls, providerSawSource: () => providerSawSource }
 }
 
 for (const fallback of [false, true]) {
@@ -173,4 +173,15 @@ for (const saveTemplate of [false, true]) {
 const blocked = fixture({ invalidReview: true })
 assert.equal((await blocked.actions.saveAsTemplate('Blocked', 'NDA', 'FSP', blocked.generatedContent, [], 'reviewed-job')).success, false)
 assert.equal(blocked.uploads.length, 0, 'Blocked reviews cannot publish template bytes')
-console.log('MNDA and reviewed-generation artifacts passed: exact source bytes/hash/lineage, truthful fallback provenance, atomic rollback, zero signing calls before artifact commit, uncertainty after provider receipt failure, and source artifacts for saved templates. No real storage, signing or model calls.')
+for (const [variables, expected] of [[{ currency: 'USD' }, 'USD'], [{ value: '', currency: ' eur ' }, 'EUR'], [{}, 'USD'], [{ value: '0', currency: 'GBP' }, 'GBP']]) {
+  const f = fixture({ variables })
+  assert.equal((await f.actions.saveGeneratedDocument('Synthetic draft', 'FSP', 'NDA', f.generatedContent, variables, undefined, 'reviewed-job')).success, true)
+  assert.equal(f.state().documents[0].currency, expected, 'Currency must be written independently of whether the amount is known')
+  if (!variables.value) assert.equal(f.state().documents[0].value, undefined, 'An unknown amount must remain unknown')
+}
+for (const variables of [{ currency: 'bad currency' }, { value: '100.00' }]) {
+  const f = fixture({ variables })
+  assert.equal((await f.actions.saveGeneratedDocument('Invalid currency', 'FSP', 'NDA', f.generatedContent, variables, undefined, 'reviewed-job')).success, false)
+  assert.equal(f.uploads.length, 0, 'Invalid or missing amount currency must fail before storage or database mutation')
+}
+console.log('MNDA and reviewed-generation artifacts passed: exact source bytes/hash/lineage, truthful fallback provenance, atomic rollback, zero signing calls before artifact commit, uncertainty after provider receipt failure, source artifacts for saved templates, and currency retained independently of unknown amounts with USD default. No real storage, signing or model calls.')

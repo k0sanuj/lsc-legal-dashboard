@@ -326,6 +326,9 @@ model AuthMagicLinkToken {
 
 model LegalDocument {
   signature_source_artifact_id String?
+  signature_certificate_checked_at DateTime?
+  signature_certificate_status String?
+  signature_certificate_error String?
   artifacts DocumentArtifact[]
   access_requests DocumentAccessRequest[]
   access_grants DocumentAccessGrant[]
@@ -1472,6 +1475,7 @@ model EntityOwnership {
   @@index([owned_entity_id])
 }
 model ReviewSchedule {
+  cadence_effective_from DateTime? @db.Date
   id String @id @default(uuid())
   title String
   kind String

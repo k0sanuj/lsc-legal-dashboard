@@ -71,8 +71,10 @@ export async function saveGeneratedDocument(
     const source = isRecord(job.input) ? (job.kind === 'DRAFT' ? job.input : isRecord(job.input.source) ? job.input.source : null) : null
     if (!source || !isRecord(source.variables) || !boundedText(source.templateId, 100) || !boundedText(source.template) || source.entity !== entity || source.category !== category || Object.keys(source.variables).length !== Object.keys(variables).length || Object.entries(source.variables).some(([key, value]) => variables[key] !== value)) throw new Error('Document metadata changed after drafting. Generate a new draft with those details.')
     const amount = variables.value?.trim()
-    const currency = variables.currency?.trim().toUpperCase()
-    if (amount && (!/^-?\d+(?:\.\d{1,6})?$/.test(amount) || !currency || !/^[A-Z]{3}$/.test(currency))) throw new Error('An exact amount and explicit three-letter agreement currency are required')
+    const suppliedCurrency = variables.currency?.trim().toUpperCase()
+    const currency = suppliedCurrency || 'USD'
+    if (!/^[A-Z]{3}$/.test(currency)) throw new Error('Select a valid three-letter agreement currency')
+    if (amount && (!/^-?\d+(?:\.\d{1,6})?$/.test(amount) || !suppliedCurrency)) throw new Error('An exact amount and explicit three-letter agreement currency are required')
     const bytes = Buffer.from(content, 'utf8')
     const fileUrl = await uploadBufferToS3(bytes, `generation/${actor.userId}/${job.id}/${job.output_hash}.txt`, 'text/plain; charset=utf-8')
     const sourceBytes = Buffer.from(source.template, 'utf8')
@@ -85,7 +87,8 @@ export async function saveGeneratedDocument(
         lifecycle_status: 'DRAFT', owner_id: actor.userId, notes: content, file_url: fileUrl,
         counterparty: variables.counterparty || null,
         parties: variables.counterparty ? [variables.counterparty] : undefined,
-        ...(amount && currency ? { value: new Prisma.Decimal(amount), currency } : {}),
+        currency,
+        ...(amount ? { value: new Prisma.Decimal(amount) } : {}),
       } })
       await tx.documentVersion.create({ data: { document_id: document.id, version_number: 1, file_url: fileUrl, change_summary: `Reviewed CLI draft${reference ? `; reference: ${reference}` : ''}`, created_by: actor.userId } })
       await recordArtifact({ documentId: document.id, stage: 'populated', sourceArtifactId: templateArtifact.id, fileUrl, originalName: `${job.id}.txt`, mimeType: 'text/plain', bytes, actorId: actor.userId, deliverableScope: `Codex job ${job.id}` }, tx)

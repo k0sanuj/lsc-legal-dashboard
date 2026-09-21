@@ -747,6 +747,7 @@ export interface OpenSignDocumentStatus {
   isDeclined: boolean
   declinedReason: string | null
   signedUrl: string | null
+  certificateUrl: string | null
   signedEmails: string[]
   viewedEmails: string[]
   raw: unknown
@@ -788,6 +789,7 @@ export async function fetchOpenSignDocument(
     isDeclined,
     declinedReason: asString(doc.DeclineReason),
     signedUrl: asString(doc.SignedUrl),
+    certificateUrl: asString(doc.CertificateUrl),
     signedEmails: [...new Set(signedEmails)],
     viewedEmails: [...new Set(viewedEmails)],
     raw: doc,

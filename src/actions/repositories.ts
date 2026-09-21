@@ -7,7 +7,7 @@ import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { prisma } from "@/lib/prisma"
 import { queueDocumentExport, requireExportAccess } from "@/lib/document-exports"
 import { currencyCode, decimalAmount } from "@/lib/money"
-import { refreshEcbRates } from "@/lib/fx-rates"
+import { refreshReferenceRates } from "@/lib/fx-rates"
 import { proposeArtifactNameForActor, approveArtifactNameForActor, finalizeArtifactForActor, publishArtifactForActor, updateArtifactLineageForActor, updateNativeAmountForActor } from "@/lib/repository-service"
 
 function text(form: FormData, key: string) { return String(form.get(key) ?? "").trim() }
@@ -70,9 +70,12 @@ export async function updateNativeAmount(form: FormData) {
 
 export async function refreshFx() {
   await requireGlobalDocumentAccess()
-  await refreshEcbRates()
+  const refreshes = await refreshReferenceRates()
   revalidatePath("/legal/currencies")
   revalidatePath("/legal/agreements")
+  revalidatePath("/legal")
+  const failures = refreshes.filter((refresh) => refresh.status === "failed")
+  if (failures.length) throw new Error(`Some FX sources could not refresh. Successful quotes were saved. ${failures.map((failure) => `${failure.source}: ${failure.error}`).join("; ")}`)
 }
 
 export async function saveSourcedFx(form: FormData) {

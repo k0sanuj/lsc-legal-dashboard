@@ -12,7 +12,7 @@ export async function requireEntityWriter(session: SessionPayload): Promise<Sess
 
 export async function listEntityProfiles(session: SessionPayload) {
   await requireGlobalDocumentAccess(session)
-  return prisma.entityProfile.findMany({ orderBy: { legal_name: 'asc' }, include: { _count: { select: { filings: true, kyc_documents: true } } } })
+  return prisma.entityProfile.findMany({ orderBy: { legal_name: 'asc' }, include: { _count: { select: { filings: true, kyc_documents: true } }, owned_by: { include: { owner_entity: { select: { id: true, legal_name: true } } } } } })
 }
 
 export async function setKycVerification(session: SessionPayload, id: string, status: KycDocStatus) {

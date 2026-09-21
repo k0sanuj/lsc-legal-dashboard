@@ -18,11 +18,22 @@ digits, inside the native database column bounds. Missing amounts or FX
 quotes remain unknown and are counted separately from converted coverage.
 
 `/legal/currencies` refreshes the dated European Central Bank XML reference feed
-and records its source URL in `FxRate`. Quotes expire after seven calendar days.
-The maintenance worker refreshes the feed when no successful refresh is recorded
-in the preceding 24 hours. ECB does not publish AED. A legal member can record a
-verified USD-per-native-unit quote with its HTTPS source and publication date.
-No hardcoded AED peg, invented rate or silent fallback is used.
+and the [UAE Central Bank feed](https://centralbank.ae/umbraco/Surface/Exchange/GetExchangeRateAllCurrency),
+recording each source URL and publication date in `FxRate`. ECB does not publish
+AED. The UAE feed publishes AED per foreign currency unit for VAT obligations;
+only its actual US Dollar row is inverted to USD per AED as a reporting reference.
+The inversion uses decimal arithmetic and rounds once to the existing database's
+12 fractional digits. No hardcoded AED peg, invented rate or silent fallback is
+used. Missing or ambiguous rows, unverified units, invalid/future publication dates
+and quotes older than seven days are rejected. The UAE fetch permits no redirects
+and is bounded to 15 seconds and 512 KiB, including streamed responses.
+
+The maintenance worker refreshes each source independently when no successful
+refresh is recorded for that source in the preceding 24 hours. A failed source
+does not prevent another from persisting its quotes, or stop export processing;
+its failure is logged. Existing quotes remain usable only inside their original
+seven-day publication window. A legal member can also record a verified
+USD-per-native-unit quote with its HTTPS source and publication date.
 
 ## Original artifacts and naming
 
@@ -52,8 +63,23 @@ A missing signed PDF leaves the document available for the signing poll to retry
 `/legal/repositories` displays template, populated, signed and certificate
 artifacts, source links and hashes. Existing files are not guessed into stages.
 Legacy text-only templates without source files remain explicit export gaps.
-Certificates are separate artifacts only when an actual source file exists;
-this release does not fabricate a certificate from an API status flag.
+Completion certificates are copied only from the authenticated provider's exact
+`CertificateUrl` field. OpenSign's [getDocument source](https://github.com/OpenSignLabs/OpenSign/blob/main/apps/OpenSignServer/cloud/parsefunction/getDocument.js)
+returns that saved document field, and its [certificate writer](https://github.com/OpenSignLabs/OpenSign/blob/main/apps/OpenSignServer/cloud/parsefunction/generateCertificatebydocId.js)
+sets it after creating the actual PDF. The app never invokes certificate generation
+or fabricates a certificate from a status flag.
+
+`opensign-certificates.ts` permits only the configured OpenSign HTTPS origin or
+managed GCS, rejects redirects and non-PDF bytes, and applies the 25 MiB limit.
+It preserves the exact PDF and hash, links a provider-bound signed artifact when
+known, and leaves legacy signed-source linkage unknown. Missing or failed copies
+remain durable `signature_certificate_status` and error fields. An in-progress
+lease and timestamp token prevent a stale attempt from overwriting a newer
+certificate receipt. The maintenance
+worker checks the oldest missing completed OpenSign certificates at most daily,
+including certificates that appear after the signing poll has finished.
+Download-all marks a completed OpenSign document without a preserved certificate
+as an explicit partial-backup gap. Other providers are not assumed to issue one.
 
 `/legal/file-naming` maintains legal-approved category codes. The supplied arena
 codes are fixed independently from incorporated entity identity. Proposals use
@@ -71,8 +97,8 @@ Run this command as a scheduled job, independently of web-request lifetime:
 node_modules/.bin/tsx scripts/run-document-exports.ts
 ```
 
-The job processes up to ten export candidates and ten Drive publication
-candidates. Both queues use expiring leases and conditional claims. Interrupted
+The job processes up to ten missing certificate candidates, ten export
+candidates and ten Drive publication candidates. Both queues use expiring leases and conditional claims. Interrupted
 jobs are eligible for retry after the lease expires. Failed work retains an
 error; operators can request a fresh export or choose "Retry Drive publication"
 after resolving the recorded failure. Failed publication is not retried silently.
@@ -80,6 +106,8 @@ after resolving the recorded failure. Failed publication is not retried silently
 Required worker environment:
 
 - `DATABASE_URL`, plus the usual Prisma configuration.
+- Existing `OPENSIGN_BASE_URL`, `OPENSIGN_APP_ID`, `OPENSIGN_MASTER_KEY` and
+  `OPENSIGN_USER_EMAIL` for read-only retrieval of completion certificates.
 - `GCS_BUCKET_NAME`, `GCS_HMAC_ACCESS_ID`, `GCS_HMAC_SECRET` for private storage.
 - `LEGAL_DRIVE_TEMPLATE_FOLDER_ID` for finalized template publication.
 - `LEGAL_DRIVE_FINAL_FOLDER_ID` for finalized agreement publication. The two
@@ -112,6 +140,14 @@ budgets bound temporary tar, compressed archive and source buffers within the
 are removed after success or failure. Download initiation and the operator's
 manual verification are separate timestamps. The monthly indicator requires a
 snapshot requested and manually verified in that UTC calendar month.
+
+The file upload makes one bounded stream pass to calculate `Content-MD5`, then
+sends a second file stream with its fixed length. This preserves GCS validation
+without loading the compressed archive into memory. The AWS client's optional
+trailing-checksum mode is disabled only for this path because its `aws-chunked`
+framing caused GCS XML to reject real exports. Ordinary Buffer/File uploads retain
+their existing checksum behavior. See [AWS checksum defaults](https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/s3-checksums.html)
+and [GCS XML object-upload checksums](https://cloud.google.com/storage/docs/xml-api/put-object-upload).
 
 Application download access expires after 24 hours. Archive objects remain in
 private GCS until an operator-approved bucket lifecycle or retention process
@@ -162,8 +198,17 @@ On 21 September 2026:
 - `npx tsx scripts/verify-document-foundations.ts` passed exact money including
   values above JavaScript's safe integer limit, 20-plus-digit carry/cancellation,
   null/zero, 101-row totals, bounded file reads, reconstructed-text detection, sourced
-  FX parsing, stale/missing quotes, full names, invalid dates/paths, and extraction
+  ECB and AED FX parsing, exact inversion, publication dates, units, ambiguous
+  rows, stale/future quotes, bounded HTTP/network failures, full names, invalid dates/paths, and extraction
   of the real tar output using the system tar reader.
+- A public read-only call through `fetchCbuaeAedRate()` on 21 September 2026
+  retrieved the actual 18 September 2026 source quote of AED 3.6725 per USD and
+  returned `0.272294077604` USD per AED. This check made no database writes and
+  does not establish production refresh acceptance.
+- Independent actual-module review with injected I/O confirmed that an ECB
+  failure still saves the AED quote, a UAE-source failure still saves ECB quotes,
+  and a recent successful refresh skips only its own source. It also independently
+  rejected invalid, stale and future dates and oversized declared/streamed bodies.
 - `npx tsx scripts/verify-document-exports.ts` passed against the isolated
   verification database, with injected local storage I/O. It exercised denied
   access, scoped grants, artifact deduplication, unsigned rejection, actual archive
@@ -177,6 +222,26 @@ On 21 September 2026:
   delivery-failure recovery, stale-request CAS,
   source binding, one version/Finance dispatch, duplicate-send prevention,
   uncertain-send blocking, stale-webhook denial and shared trusted reconciliation.
+
+- `node scripts/verify-opensign-certificates.mjs` passed actual provider field
+  parsing, exact certificate PDF bytes, signed-artifact lineage, idempotency,
+  explicit absence, untrusted-origin/invalid-PDF/download failures and stale-binding
+  denial. The isolated export test also verified missing certificate means partial,
+  and a preserved certificate closes that particular gap.
+
+- An explicitly authorized production-storage probe with
+  `scripts/verify-gcs-file-upload.ts --live-synthetic-probe` reproduced the old
+  file upload failure: HTTP 403 `SignatureDoesNotMatch`, `Invalid argument.`.
+  After the fix, a uniquely named 149-byte synthetic tar.gz uploaded successfully,
+  downloaded with the exact SHA-256, and was deleted with a subsequent 404 check.
+  Only that probe's `acceptance/v2/<uuid>/synthetic.tar.gz` object was touched.
+  This verifies the file upload transport; the release owner separately verifies
+  an actual export job and its manifest.
+- `node scripts/verify-gcs-upload-transport.mjs` independently exercises the
+  actual storage module and installed SDK against localhost with synthetic
+  credentials. It verified 524,411 exact file bytes, matching `Content-MD5` and
+  `Content-Length`, no AWS checksum trailers, provider rejection propagation,
+  and closed streams on both success and failure.
 
 The integrated release gate and production acceptance are recorded separately by
 the release owner. No external deployment claim is implied by these local tests.

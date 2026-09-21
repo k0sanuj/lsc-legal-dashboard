@@ -16,7 +16,7 @@ import { MAX_DOCUMENT_FILE_BYTES, MAX_EXPORT_TAR_BYTES, EXPORT_MANIFEST_RESERVE_
 import { appendTarFile, appendTarText, finishTar } from "@/lib/tar-archive"
 import type { SessionPayload } from "@/lib/session"
 
-interface ExportItem { id: string; documentId: string | null; stage: string; name: string; url: string | null; sha256: string | null; content?: string }
+interface ExportItem { id: string; documentId: string | null; stage: string; name: string; url: string | null; sha256: string | null; content?: string; missingReason?: string }
 interface Snapshot { at: string; global: boolean; documents: string[]; items: ExportItem[] }
 interface ExportEntry { id: string; stage: string; name: string; path: string | null; sha256: string | null; bytes: number | null; error: string | null }
 export interface ExportIO {
@@ -37,6 +37,7 @@ export async function queueDocumentExport(session: SessionPayload) {
   const items: ExportItem[] = []
   for (const doc of documents) {
     const urls = new Set<string>()
+    if (doc.signature_provider === "opensign" && doc.signature_status === "SIGNED" && doc.signature_completed_at && !doc.artifacts.some((artifact) => artifact.stage === "certificate")) items.push({ id: `certificate-${doc.id}`, documentId: doc.id, stage: "certificate", name: `${doc.title} completion certificate`, url: null, sha256: null, missingReason: doc.signature_certificate_error ?? "OpenSign completion certificate has not been preserved; provider availability is unverified" })
     for (const artifact of doc.artifacts) {
       urls.add(artifact.file_url)
       items.push({ id: artifact.id, documentId: doc.id, stage: artifact.stage, name: artifact.approved_name ?? artifact.original_name, url: artifact.file_url, sha256: artifact.sha256 })
@@ -117,7 +118,7 @@ async function processExport(id: string, io: ExportIO) {
           await writeFile(local, item.content)
           hash.update(item.content)
         } else {
-          if (!item.url) throw new Error("Source file missing; metadata alone is not a complete backup")
+          if (!item.url) throw new Error(item.missingReason ?? "Source file missing; metadata alone is not a complete backup")
           const response = await io.read(item.url)
           if (Number(response.headers.get("content-length") ?? 0) > available) { await response.body?.cancel(); throw new Error("Source exceeds the 25 MiB file or 512 MiB archive limit") }
           if (!response.body) throw new Error("Source response has no bytes")

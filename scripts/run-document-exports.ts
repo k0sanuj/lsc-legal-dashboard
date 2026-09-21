@@ -1,12 +1,15 @@
 /** Run as a scheduled worker job with the application's DB/GCS identity, independently of HTTP requests. */
 import { runPendingDocumentExports } from "../src/lib/document-exports"
+import { runPendingOpenSignCertificates } from "../src/lib/opensign-certificates"
 import { prisma } from "../src/lib/prisma"
 import { runPendingDrivePublications } from "../src/lib/drive-documents"
-import { refreshEcbRates, ECB_SOURCE } from "../src/lib/fx-rates"
+import { refreshReferenceRates } from "../src/lib/fx-rates"
 
 async function maintain() {
-  const fresh = await prisma.fxRate.findFirst({ where: { source_url: ECB_SOURCE, fetched_at: { gte: new Date(Date.now() - 86400000) } } })
-  if (!fresh) await refreshEcbRates().catch((error: unknown) => console.error("FX refresh unavailable; no rate invented:", error instanceof Error ? error.message : "Unknown failure"))
+  const refreshes = await refreshReferenceRates(new Date(Date.now() - 86400000))
+  for (const refresh of refreshes) if (refresh.status === "failed") console.error(`FX refresh unavailable for ${refresh.source}; no rate invented: ${refresh.error}`)
+  const certificates = await runPendingOpenSignCertificates(10)
+  console.log(`Checked ${certificates} missing OpenSign certificate(s)`)
   return runPendingDocumentExports(10)
 }
 maintain()

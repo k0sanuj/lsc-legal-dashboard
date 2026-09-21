@@ -28,6 +28,7 @@ export async function recordArtifact(input: RecordArtifactInput, db: Prisma.Tran
   if (input.sourceArtifactId) {
     const source = await db.documentArtifact.findUniqueOrThrow({ where: { id: input.sourceArtifactId } })
     if (input.stage === "populated" && source.stage !== "template") throw new Error("Populated source must be a template")
+    if (input.stage === "certificate" && (source.stage !== "signed" || source.document_id !== input.documentId)) throw new Error("Certificate source must be this agreement's signed artifact")
     if (input.stage === "signed" && (source.stage !== "populated" || source.document_id !== input.documentId)) throw new Error("Signed source must be this agreement's populated artifact")
   }
   if (input.stage === "signed" || input.stage === "certificate") {

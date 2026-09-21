@@ -19,6 +19,7 @@ import { extractTextFromFile } from "@/lib/extract-text"
 import { runAgent } from "@/lib/agents/orchestrator"
 import { queueFinanceEvent, deliverFinanceEvent } from "@/lib/finance-webhook"
 import { notifyDocumentReviewChange } from "@/lib/review-service"
+import { preserveOpenSignCertificate } from "@/lib/opensign-certificates"
 import { buildContractPayload } from "@/lib/finance-payloads"
 import { recordArtifact, boundedArtifactBytes } from "@/lib/document-artifacts"
 
@@ -43,7 +44,10 @@ export async function applyOpenSignStatus(documentId: string, status?: OpenSignD
   if (!doc || doc.signature_provider !== "opensign" || !doc.signature_provider_request_id) return { documentId, changed: false, status: "skipped", detail: "No active OpenSign provider request" }
   const current = status ?? await fetchOpenSignDocument(doc.signature_provider_request_id)
   if (current.objectId !== doc.signature_provider_request_id) return { documentId, changed: false, status: "skipped", detail: "Provider request does not match the current binding" }
-  if (doc.lifecycle_status === "SIGNED" || doc.signature_status === "SIGNED") return { documentId, changed: false, status: "completed", detail: "already recorded" }
+  if (doc.lifecycle_status === "SIGNED" || doc.signature_status === "SIGNED") {
+    const certificate = await preserveOpenSignCertificate(doc.id, current)
+    return { documentId, changed: false, status: "completed", detail: `Already signed; certificate ${certificate.status}` }
+  }
 
   // Never infer the submitted source from a file uploaded after the invitation.
   const sourceArtifact = doc.signature_source_artifact_id
@@ -102,7 +106,7 @@ export async function applyOpenSignStatus(documentId: string, status?: OpenSignD
       versionId = version.id
       await notifyDocumentReviewChange(doc.id, `version:${version.id}`, tx)
       await tx.lifecycleEvent.create({ data: { document_id: doc.id, from_status: doc.lifecycle_status, to_status: "SIGNED", transitioned_by: "opensign", notes: "All parties signed via OpenSign; signed PDF and artifact stored" } })
-      await recordArtifact({ documentId: doc.id, sourceArtifactId: sourceArtifact?.id, stage: "signed", fileUrl: signedFile.url, originalName: `${doc.title}.pdf`, mimeType: "application/pdf", bytes: signedFile.bytes, actorId: "opensign", signerScope: requestSigners.map((signer) => signer.signatory_email), finalized: true }, tx)
+      await recordArtifact({ documentId: doc.id, sourceArtifactId: sourceArtifact?.id, stage: "signed", fileUrl: signedFile.url, originalName: `${doc.title}.pdf`, mimeType: "application/pdf", bytes: signedFile.bytes, actorId: "opensign", signerScope: requestSigners.map((signer) => signer.signatory_email), finalized: true, provenance: { provider: "opensign", providerRequestId: current.objectId } }, tx)
       const updated = await tx.legalDocument.findUnique({ where: { id: doc.id } })
       if (!updated) throw new Error("Signed document disappeared during reconciliation")
       const event = await queueFinanceEvent(financeEventType, buildContractPayload(updated), { entityType: "LegalDocument", entityId: doc.id }, tx)
@@ -128,5 +132,6 @@ export async function applyOpenSignStatus(documentId: string, status?: OpenSignD
       await prisma.legalDocument.update({ where: { id: doc.id }, data: { last_finance_post_at: new Date(), finance_post_status: delivery.ok ? "synced" : "failed", last_finance_post_error: delivery.ok ? null : delivery.error ?? "Finance delivery failed; durable event is queued" } })
     }
   }
+  if (signedFile) await preserveOpenSignCertificate(doc.id, current)
   return { documentId, changed: result.changed, status: current.isDeclined ? "declined" : signedFile ? "completed" : "in_progress" }
 }

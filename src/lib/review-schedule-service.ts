@@ -3,13 +3,19 @@ import { Prisma } from '@/generated/prisma/client'
 import { requireEntityWriter } from '@/lib/entity-service'
 import { dateField, enumField, evidenceReference, requiredText, textField } from '@/lib/entity-input'
 import { prisma } from '@/lib/prisma'
-import { completeReviewTask, materializeReviewTasks, signalReviewChange } from '@/lib/review-service'
-import { parseDependencyImport, validateDependencies, validateReviewRule } from '@/lib/review-rules'
+import { completeReviewTask, materializeReviewTasks, materializeScheduleTasks, signalReviewChange } from '@/lib/review-service'
+import { parseDependencyImport, utcDay, validateDependencies, validateReviewRule } from '@/lib/review-rules'
 
 import type { SessionPayload } from '@/lib/session'
 
 export async function createReviewScheduleForSession(session: SessionPayload, form: FormData) {
+  if (textField(form, 'id')) throw new Error('Use the schedule edit operation for an existing record.')
+  return saveReviewScheduleForSession(session, form)
+}
+
+export async function saveReviewScheduleForSession(session: SessionPayload, form: FormData) {
   const actor = await requireEntityWriter(session)
+  const id = textField(form, 'id')
   const kind = enumField(form, 'kind', ['PUBLIC', 'INTERNAL'] as const)
   const startDate = dateField(form, 'start_date', true)!
   const interval = textField(form, 'interval_months')
@@ -23,8 +29,37 @@ export async function createReviewScheduleForSession(session: SessionPayload, fo
   if (kind === 'PUBLIC' && !documentId) throw new Error('Public schedules must link a document.')
   const ownerId = requiredText(form, 'owner_id')
   if (!await prisma.appUser.findFirst({ where: { id: ownerId, is_active: true }, select: { id: true } })) throw new Error('Choose an active review owner.')
-  const schedule = await prisma.reviewSchedule.create({ data: { ...rule, title: requiredText(form, 'title', 300), document_id: documentId, policy_id: policyId, owner_id: ownerId, source_reference: evidenceReference(form, 'source_reference', true), created_by: actor.userId } })
-  await materializeReviewTasks()
+  const data = { ...rule, title: requiredText(form, 'title', 300), document_id: documentId, policy_id: policyId, owner_id: ownerId, source_reference: evidenceReference(form, 'source_reference', true) }
+  const now = new Date()
+  const schedule = await prisma.$transaction(async tx => {
+    if (!id) {
+      const created = await tx.reviewSchedule.create({ data: { ...data, created_by: actor.userId } })
+      await materializeScheduleTasks(tx, created, now)
+      return created
+    }
+    const current = await tx.reviewSchedule.findUnique({ where: { id } })
+    if (!current) throw new Error('Review schedule not found.')
+    const expected = requiredText(form, 'expected_updated_at', 40)
+    if (current.updated_at.toISOString() !== expected) throw new Error('This schedule changed. Refresh before editing it.')
+    if (current.kind !== kind || current.document_id !== documentId || current.policy_id !== policyId || current.start_date.getTime() !== startDate.getTime()) {
+      throw new Error('Keep the existing review kind, document/policy and start date. Create a separate schedule for a different source or anchor.')
+    }
+    const cadenceChanged = current.interval_months !== rule.interval_months || current.steady_interval_months !== rule.steady_interval_months
+    // Existing due obligations and completion evidence retain the rule that created them.
+    if (cadenceChanged) await materializeScheduleTasks(tx, current, now)
+    const updated = await tx.reviewSchedule.updateMany({ where: { id, updated_at: current.updated_at }, data: {
+      ...data,
+      updated_at: new Date(Math.max(now.getTime(), current.updated_at.getTime() + 1)),
+      ...(cadenceChanged ? { cadence_effective_from: utcDay(now) } : {}),
+    } })
+    if (updated.count !== 1) throw new Error('This schedule changed. Refresh before editing it.')
+    if (cadenceChanged) {
+      await tx.reviewTask.deleteMany({ where: { schedule_id: id, trigger_kind: 'SCHEDULE', status: 'OPEN', due_date: { gt: utcDay(now) } } })
+    }
+    const saved = await tx.reviewSchedule.findUniqueOrThrow({ where: { id } })
+    await materializeScheduleTasks(tx, saved, now)
+    return saved
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
   return { success: true, id: schedule.id }
 }
 
