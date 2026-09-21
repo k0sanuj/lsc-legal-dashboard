@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireSession } from "@/lib/auth"
 import { formatAED, formatDate } from "@/lib/constants"
 import { cn } from "@/lib/utils"
@@ -63,6 +64,7 @@ export default async function PaymentCyclesPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   await requireSession()
+  await requireGlobalDocumentAccess()
   const params = await searchParams
   const status = typeof params.status === "string" ? params.status : null
   const message = typeof params.message === "string" ? params.message : null

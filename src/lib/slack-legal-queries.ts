@@ -7,6 +7,8 @@
  * computed here on the server, never in a renderer.
  */
 import { prisma } from "./prisma"
+import { documentScope, requireGlobalDocumentAccess } from "./document-access"
+import type { SessionPayload } from "./session"
 
 const MS_PER_DAY = 86_400_000
 const LOOKUP_LIMIT = 5
@@ -59,7 +61,8 @@ function documentLinkPath(documentId: string): string {
 }
 
 /** One snapshot of the whole legal operation, for "/legal status". */
-export async function legalStatusSummary(): Promise<LegalStatusSummary> {
+export async function legalStatusSummary(actor: SessionPayload): Promise<LegalStatusSummary> {
+  await requireGlobalDocumentAccess(actor)
   const complianceWindowEnd = new Date(Date.now() + COMPLIANCE_WINDOW_DAYS * MS_PER_DAY)
 
   const [documents, signatures, redlines, complianceDueSoon, trackerBlocked, trackerInProgress, recent] =
@@ -113,12 +116,13 @@ export async function legalStatusSummary(): Promise<LegalStatusSummary> {
 }
 
 /** Top matches on title or counterparty, for "/legal find <query>". */
-export async function agreementLookup(query: string): Promise<AgreementHit[]> {
+export async function agreementLookup(actor: SessionPayload, query: string): Promise<AgreementHit[]> {
   const needle = query.trim()
   if (!needle) return []
 
   const documents = await prisma.legalDocument.findMany({
     where: {
+      AND: [await documentScope(actor)],
       OR: [
         { title: { contains: needle, mode: "insensitive" } },
         { counterparty: { contains: needle, mode: "insensitive" } },
@@ -146,9 +150,9 @@ export async function agreementLookup(query: string): Promise<AgreementHit[]> {
 }
 
 /** Awaiting-signature documents with per-signer state, for "/legal signatures". */
-export async function signaturesInFlight(): Promise<SignatureInFlight[]> {
+export async function signaturesInFlight(actor: SessionPayload): Promise<SignatureInFlight[]> {
   const documents = await prisma.legalDocument.findMany({
-    where: { lifecycle_status: "AWAITING_SIGNATURE" },
+    where: { AND: [await documentScope(actor)], lifecycle_status: "AWAITING_SIGNATURE" },
     orderBy: { signature_sent_at: "asc" },
     select: {
       id: true,

@@ -1,5 +1,6 @@
 "use server"
 
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { prisma } from "@/lib/prisma"
@@ -19,6 +20,7 @@ function parseTerms(value: string | null): PaymentTerms {
 
 export async function createPaymentCycleAction(formData: FormData): Promise<void> {
   await requireRole([...ALLOWED_ROLES])
+  await requireGlobalDocumentAccess()
 
   const documentId = String(formData.get("documentId") ?? "")
   const trancheNumber = Number(formData.get("trancheNumber") ?? 1)
@@ -105,6 +107,7 @@ export async function createPaymentCycleAction(formData: FormData): Promise<void
 
 export async function updatePaymentCycleAction(formData: FormData): Promise<void> {
   await requireRole([...ALLOWED_ROLES])
+  await requireGlobalDocumentAccess()
 
   const id = String(formData.get("id") ?? "")
   if (!id) redirect("/legal/payment-cycles?error=missing+id")
@@ -172,6 +175,7 @@ export async function updatePaymentCycleAction(formData: FormData): Promise<void
 /** Manual resync trigger from the table row's "Resync" button. */
 export async function resyncPaymentCycleAction(formData: FormData): Promise<void> {
   await requireRole([...ALLOWED_ROLES])
+  await requireGlobalDocumentAccess()
   const id = String(formData.get("id") ?? "")
   if (!id) return
 

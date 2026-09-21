@@ -27,6 +27,8 @@ const ENTITIES = [
   { value: 'LSC', label: 'LSC' },
   { value: 'TBR', label: 'TBR' },
   { value: 'FSP', label: 'FSP' },
+  { value: 'XTZ', label: 'XTZ' },
+  { value: 'XTE', label: 'XTE' },
 ]
 
 const JURISDICTIONS = [
@@ -40,7 +42,7 @@ const JURISDICTIONS = [
   { value: 'CAYMAN', label: 'Cayman' },
 ]
 
-export function CreateKycForm() {
+export function CreateKycForm({ entityProfileId }: { entityProfileId?: string }) {
   const [open, setOpen] = useState(false)
   const [entity, setEntity] = useState('LSC')
   const [jurisdiction, setJurisdiction] = useState('UAE')
@@ -53,6 +55,7 @@ export function CreateKycForm() {
     const formData = new FormData(form)
     formData.set('entity', entity)
     formData.set('jurisdiction', jurisdiction)
+    if (entityProfileId) formData.set('entity_profile_id', entityProfileId)
 
     startTransition(async () => {
       const result = await createKycDocument(formData)

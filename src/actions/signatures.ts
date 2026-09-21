@@ -1,5 +1,6 @@
 "use server"
 
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { revalidatePath } from "next/cache"
 import { prisma } from "@/lib/prisma"
 import { requireRole } from "@/lib/auth"
@@ -24,6 +25,7 @@ export async function updateSignatureStatus(
   newStatus: SignatureStatus
 ) {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   const updated = await prisma.signatureRequest.update({
     where: { id: requestId },
@@ -40,6 +42,7 @@ export async function updateSignatureStatus(
 
 export async function createSignatureRequest(formData: FormData) {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   const documentId = String(formData.get("documentId") ?? "")
   const signatoryName = String(formData.get("signatoryName") ?? "").trim()
@@ -80,6 +83,7 @@ export async function createSignatureRequest(formData: FormData) {
 
 export async function deleteSignatureRequest(formData: FormData) {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   const requestId = String(formData.get("requestId") ?? "")
   if (!requestId) return { success: false, error: "Signature request ID required." }
@@ -104,6 +108,7 @@ export async function createSignatureRequests(
   signatories: { name: string; email: string }[]
 ) {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   if (!documentId) return { success: false, error: "Document ID required." }
   const cleaned = signatories

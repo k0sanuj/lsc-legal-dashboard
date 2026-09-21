@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireRole } from "@/lib/auth"
 import { formatDate } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
@@ -22,6 +23,7 @@ import { toggleTableLock, createTableConfig } from "@/actions/table-config"
 
 export default async function TableConfigPage() {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   const configs = await prisma.dashboardTableConfig.findMany({
     orderBy: { table_key: "asc" },

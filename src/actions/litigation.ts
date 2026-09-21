@@ -4,83 +4,68 @@ import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
-import { runAgent, sendCrossDashboardMessage } from '@/lib/agents/orchestrator'
+import { runAgent } from '@/lib/agents/orchestrator'
+import { requireGlobalDocumentAccess } from '@/lib/document-access'
+import { saveDispute, setDisputeStatus } from '@/lib/dispute-service'
+import { parseDisputeAmount, disputeCurrency, DISPUTE_KINDS } from '@/lib/dispute-rules'
+import { dateField, enumField, requiredText, textField, ENTITY_CODES, JURISDICTION_CODES } from '@/lib/entity-input'
 import { uploadToS3, getS3Key } from '@/lib/s3'
 import { extractTextFromFile } from '@/lib/extract-text'
-import type { Entity, Jurisdiction, LitigationStatus } from '@/generated/prisma/client'
+import type { LitigationStatus } from '@/generated/prisma/client'
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 export async function createLitigationCase(formData: FormData) {
-  const session = await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
-
-  const caseRecord = await prisma.litigationCase.create({
-    data: {
-      case_name: formData.get('case_name') as string,
-      case_number: (formData.get('case_number') as string) || null,
-      jurisdiction: formData.get('jurisdiction') as Jurisdiction,
-      court_tribunal: (formData.get('court_tribunal') as string) || null,
-      entity: formData.get('entity') as Entity,
-      plaintiff: formData.get('plaintiff') as string,
-      defendant: formData.get('defendant') as string,
-      status: 'PRE_FILING',
-      assigned_to: session.userId,
-      estimated_liability: formData.get('estimated_liability') ? parseFloat(formData.get('estimated_liability') as string) : null,
-    },
+  const session = await requireGlobalDocumentAccess(await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN']))
+  const id = textField(formData, 'id') ?? undefined
+  const result = await saveDispute(session, {
+    id, revision: id ? Number(requiredText(formData, 'revision')) : undefined,
+    case_name: requiredText(formData, 'case_name', 300),
+    case_number: textField(formData, 'case_number', false, 200),
+    jurisdiction: enumField(formData, 'jurisdiction', JURISDICTION_CODES),
+    court_tribunal: textField(formData, 'court_tribunal', false, 400),
+    entity: enumField(formData, 'entity', ENTITY_CODES),
+    dispute_kind: enumField(formData, 'dispute_kind', DISPUTE_KINDS),
+    claim_type: requiredText(formData, 'claim_type', 200),
+    plaintiff: requiredText(formData, 'plaintiff', 400),
+    defendant: requiredText(formData, 'defendant', 400),
+    estimated_liability: parseDisputeAmount(textField(formData, 'estimated_liability', false, 40)),
+    currency: disputeCurrency(requiredText(formData, 'currency', 3)),
+    exposure_basis: textField(formData, 'exposure_basis'),
+    exposure_as_of: dateField(formData, 'exposure_as_of'),
+    notes: textField(formData, 'notes'),
   })
-
-  // Notify finance of financial exposure
-  if (caseRecord.estimated_liability) {
-    await sendCrossDashboardMessage(
-      'legal',
-      'litigation_exposure_created',
-      'LitigationCase',
-      caseRecord.id,
-      {
-        caseName: caseRecord.case_name,
-        entity: caseRecord.entity,
-        estimatedLiability: Number(caseRecord.estimated_liability),
-        currency: caseRecord.currency,
-      }
-    )
-  }
-
   revalidatePath('/legal/litigation')
-  return { success: true, caseId: caseRecord.id }
+  revalidatePath('/legal/arbitration')
+  revalidatePath(`/legal/litigation/${result.caseId}`)
+  return result
 }
 
 export async function updateLitigationStatus(caseId: string, newStatus: LitigationStatus) {
-  await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
-
-  await prisma.litigationCase.update({
-    where: { id: caseId },
-    data: { status: newStatus },
-  })
-
-  await prisma.litigationEvent.create({
-    data: {
-      case_id: caseId,
-      event_type: 'status_change',
-      title: `Status changed to ${newStatus}`,
-      event_date: new Date(),
-    },
-  })
-
+  const session = await requireGlobalDocumentAccess(await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN']))
+  const result = await setDisputeStatus(session, caseId, newStatus)
   revalidatePath('/legal/litigation')
+  revalidatePath('/legal/arbitration')
   revalidatePath(`/legal/litigation/${caseId}`)
-  return { success: true }
+  return result
+}
+
+export async function updateDisputeStatusForm(formData: FormData) {
+  const status = enumField(formData, 'status', ['PRE_FILING', 'FILED', 'DISCOVERY', 'TRIAL', 'APPEAL', 'SETTLED', 'CLOSED'] as const)
+  return updateLitigationStatus(requiredText(formData, 'case_id'), status)
 }
 
 export async function addLitigationEvent(formData: FormData) {
-  await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+  const session = await requireGlobalDocumentAccess(await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN']))
 
   await prisma.litigationEvent.create({
     data: {
-      case_id: formData.get('case_id') as string,
-      event_type: formData.get('event_type') as string,
-      title: formData.get('title') as string,
+      case_id: requiredText(formData, 'case_id'),
+      created_by: session.userId,
+      event_type: requiredText(formData, 'event_type', 100),
+      title: requiredText(formData, 'title', 400),
       description: (formData.get('description') as string) || null,
-      event_date: new Date(formData.get('event_date') as string),
+      event_date: dateField(formData, 'event_date', true)!,
     },
   })
 
@@ -90,7 +75,7 @@ export async function addLitigationEvent(formData: FormData) {
 }
 
 export async function uploadLitigationDocument(formData: FormData) {
-  const session = await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+  const session = await requireGlobalDocumentAccess(await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN']))
 
   const caseId = formData.get('caseId') as string
   const file = formData.get('file') as File

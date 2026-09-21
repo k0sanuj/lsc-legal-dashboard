@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireSession } from "@/lib/auth"
 import { formatDate } from "@/lib/constants"
 import { cn } from "@/lib/utils"
@@ -27,6 +28,7 @@ import { AuditReportExpandable } from "./audit-report-expandable"
 
 export default async function AuditReportsPage() {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   const reports = await prisma.auditReport.findMany({
     orderBy: { created_at: "desc" },

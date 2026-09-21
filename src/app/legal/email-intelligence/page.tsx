@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireSession } from "@/lib/auth"
 import { formatAED, formatDate } from "@/lib/constants"
 import { cn } from "@/lib/utils"
@@ -56,6 +57,7 @@ const TAG_LABELS: Record<EmailTag, string> = {
 
 export default async function EmailIntelligencePage() {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   const [invoices, emailTags] = await Promise.all([
     prisma.detectedInvoice.findMany({

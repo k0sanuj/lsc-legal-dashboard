@@ -2,10 +2,9 @@
 
 import { useState, useTransition, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { generateContract, refineContract, saveGeneratedDocument, saveAsTemplate } from '@/actions/generate'
+import { generateContract, refineContract, saveGeneratedDocument, saveAsTemplate, getGenerationJob, cancelGeneration } from '@/actions/generate'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import {
   Card,
   CardContent,
@@ -74,6 +73,10 @@ export function GenerateForm({ templates, entities, preselectedTemplateId }: Gen
   const [reference, setReference] = useState('')
   const [variables, setVariables] = useState<Record<string, string>>({})
   const [draft, setDraft] = useState('')
+  const [jobId, setJobId] = useState<string | null>(null)
+  const [jobStatus, setJobStatus] = useState('')
+  const [reviewNotes, setReviewNotes] = useState<string[]>([])
+  const jobRunning = jobStatus === 'QUEUED' || jobStatus === 'RUNNING'
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
   const [isPending, startTransition] = useTransition()
@@ -98,6 +101,38 @@ export function GenerateForm({ templates, entities, preselectedTemplateId }: Gen
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages])
 
+  useEffect(() => {
+    if (!jobId || !jobRunning) return
+    let stopped = false
+    let timer: ReturnType<typeof setTimeout>
+    async function poll() {
+      try {
+        const job = await getGenerationJob(jobId!)
+        if (stopped) return
+        if (!job) { setError('Generation job is unavailable.'); setJobStatus('FAILED'); return }
+        setJobStatus(job.status)
+        if (job.output_text) setDraft(job.output_text)
+        if (job.error) setError(job.error)
+        const reviews = job.reviews
+        if (reviews && typeof reviews === 'object' && !Array.isArray(reviews)) {
+          const notes: string[] = []
+          for (const name of ['substantive', 'references']) {
+            const review = reviews[name]
+            if (review && typeof review === 'object' && !Array.isArray(review) && Array.isArray(review.findings)) {
+              for (const finding of review.findings) {
+                if (finding && typeof finding === 'object' && !Array.isArray(finding) && typeof finding.issue === 'string') notes.push(finding.issue)
+              }
+            }
+          }
+          setReviewNotes(notes)
+        }
+        if (job.status === 'QUEUED' || job.status === 'RUNNING') timer = setTimeout(poll, 3000)
+      } catch { if (!stopped) { setError('Could not read generation status. Reload to retry.'); setJobStatus('FAILED') } }
+    }
+    void poll()
+    return () => { stopped = true; clearTimeout(timer) }
+  }, [jobId, jobRunning])
+
   function handleVariableChange(key: string, value: string) {
     setVariables((prev) => ({ ...prev, [key]: value }))
   }
@@ -108,9 +143,11 @@ export function GenerateForm({ templates, entities, preselectedTemplateId }: Gen
     setChatMessages([])
     setShowChat(false)
     startTransition(async () => {
-      const result = await generateContract(templateId, variables, entity, reference || undefined)
+      const result = await generateContract(templateId, variables, entity, reference || undefined, crypto.randomUUID())
       if (result.success) {
-        setDraft(result.draft)
+        setJobId(result.jobId)
+        setJobStatus('QUEUED')
+        setReviewNotes([])
       } else {
         setError(result.error ?? 'Generation failed')
       }
@@ -133,11 +170,12 @@ export function GenerateForm({ templates, entities, preselectedTemplateId }: Gen
         selectedTemplate.category,
         draft,
         variables,
-        reference || undefined
+        reference || undefined,
+        jobId ?? undefined
       )
       if (result.success) {
         router.push(`/legal/documents/${result.documentId}`)
-      }
+      } else { setError(result.error) }
     })
   }
 
@@ -148,12 +186,14 @@ export function GenerateForm({ templates, entities, preselectedTemplateId }: Gen
     setChatMessages((prev) => [...prev, { role: 'user', content: instruction }])
 
     startRefineTransition(async () => {
-      const result = await refineContract(draft, instruction)
+      const result = await refineContract(draft, instruction, crypto.randomUUID(), jobId ?? undefined)
       if (result.success) {
-        setDraft(result.draft)
+        setJobId(result.jobId)
+        setJobStatus('QUEUED')
+        setReviewNotes([])
         setChatMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: 'Done — contract updated.' },
+          { role: 'assistant', content: 'Refinement queued. Both reviews will run on the revised draft.' },
         ])
       } else {
         setChatMessages((prev) => [
@@ -179,12 +219,13 @@ export function GenerateForm({ templates, entities, preselectedTemplateId }: Gen
               { key: 'email', label: 'Email', placeholder: 'e.g. contact@acme.com' },
               { key: 'address', label: 'Address', placeholder: 'e.g. Dubai, UAE' },
               { key: 'term_months', label: 'Term (months)', placeholder: 'e.g. 12' },
-            ]
+            ],
+        jobId ?? undefined
       )
       if (result.success) {
         setTemplateDialogOpen(false)
         setNewTemplateName('')
-      }
+      } else { setError(result.error) }
     })
   }
 
@@ -296,7 +337,7 @@ export function GenerateForm({ templates, entities, preselectedTemplateId }: Gen
         <Button
           className="w-full bg-linear-to-r from-violet-600 to-purple-600 text-white hover:from-violet-700 hover:to-purple-700"
           size="lg"
-          disabled={!templateId || !entity || isPending}
+          disabled={!templateId || !entity || isPending || jobRunning}
           onClick={handleGenerate}
         >
           {isPending ? (
@@ -312,6 +353,12 @@ export function GenerateForm({ templates, entities, preselectedTemplateId }: Gen
           )}
         </Button>
 
+        {jobId && <div className="border-t border-border pt-4 text-sm" role="status">
+          <p>{jobStatus === 'READY' ? 'Both reviews passed. Review the draft before saving.' : `Generation: ${jobStatus.toLowerCase().replaceAll('_', ' ')}`}</p>
+          <a className="mt-1 font-mono text-xs underline" href={`/legal/generate/jobs/${jobId}`}>Open durable job {jobId}</a>
+          {jobRunning && <button type="button" className="mt-2 underline" onClick={async () => { const result = await cancelGeneration(jobId); if (result.success) setJobStatus('CANCELLED') }}>Cancel generation</button>}
+          {reviewNotes.length > 0 && <ul className="mt-3 list-disc pl-5">{reviewNotes.map((note, index) => <li key={index}>{note}</li>)}</ul>}
+        </div>}
         {error && (
           <p className="text-sm text-rose-400">{error}</p>
         )}
@@ -382,7 +429,7 @@ export function GenerateForm({ templates, entities, preselectedTemplateId }: Gen
                         </div>
                         <Button
                           className="w-full"
-                          disabled={!newTemplateName.trim() || isSavingTemplate}
+                          disabled={!newTemplateName.trim() || isSavingTemplate || jobStatus !== 'READY'}
                           onClick={handleSaveAsTemplate}
                         >
                           {isSavingTemplate ? (
@@ -402,7 +449,7 @@ export function GenerateForm({ templates, entities, preselectedTemplateId }: Gen
                     variant="ghost"
                     size="sm"
                     onClick={handleSave}
-                    disabled={isSaving}
+                    disabled={isSaving || jobStatus !== 'READY'}
                     title="Save as document"
                   >
                     {isSaving ? (
@@ -445,7 +492,7 @@ export function GenerateForm({ templates, entities, preselectedTemplateId }: Gen
                 Refine with AI
               </CardTitle>
               <CardDescription>
-                Give instructions to modify the contract — e.g. &quot;add a non-compete clause&quot; or &quot;change payment terms to NET 60&quot;
+                Give instructions to modify the contract, e.g. &quot;add a non-compete clause&quot; or &quot;change payment terms to NET 60&quot;
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -488,7 +535,7 @@ export function GenerateForm({ templates, entities, preselectedTemplateId }: Gen
                 <Button
                   size="sm"
                   onClick={handleSendChat}
-                  disabled={!chatInput.trim() || isRefining}
+                  disabled={!chatInput.trim() || isRefining || jobRunning}
                 >
                   {isRefining ? (
                     <Loader2 className="size-4 animate-spin" />

@@ -22,15 +22,13 @@ until they have a class, trigger, tests, and observable output.
 ## Trigger Map
 
 - `src/actions/generate.ts`
-  - AI generation and refinement return `GENERATION_PAUSED` after role checks.
-  - Shared availability/message live in `src/lib/contract-generation.ts`.
-  - While paused, no template lookup, usage-count update or provider construction
-    is allowed. The generator page returns the pause before loading templates.
-  - This does not pause document-analysis agents or deterministic MNDA sending.
-  - Reactivation requires the Claude CLI worker and review gates. Do not use an
-    environment flag to re-enable legacy API drafting.
-  - `node scripts/verify-generation-pause.mjs` exercises the actions and role
-    checks with database/provider boundaries blocked; it is in the release gate.
+  - Central access and role checks precede durable generation queue access.
+  - Codex CLI runs on the dedicated worker with ChatGPT authentication, not API
+    drafting. See `ops/generation-worker/README.md` for owner/requester separation.
+  - Fresh verified worker availability and exact draft/review hashes gate use.
+  - Deterministic MNDA sends and existing analysis agents remain separate.
+  - `verify-generation-pause.mjs`, `verify-v2-generation-slack.mjs` and
+    `verify-generation-worker.mjs` exercise provider boundaries and reviews.
 
 - `src/actions/documents.ts`
   - New upload with extracted text: schedules `agreement-analyzer` with `after()`.
@@ -86,13 +84,13 @@ until they have a class, trigger, tests, and observable output.
 
 ## Required Runtime Env
 
-Production needs these variables in Vercel, not committed `.env` files:
+Production configuration belongs to GCP Cloud Run and the isolated worker, never committed `.env` files:
 
 - Auth/database: `AUTH_SESSION_SECRET`, `AUTH_ALLOWED_EMAILS`, `DATABASE_URL`, `DIRECT_DATABASE_URL`
 - Cron: `CRON_SECRET`
 - AI: `AI_PROVIDER=gemini`, `GEMINI_API_KEY`, optional `ANTHROPIC_API_KEY` fallback
-- S3: `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`
-- OpenSign: `OPENSIGN_BASE_URL`, `OPENSIGN_PUBLIC_URL`, `OPENSIGN_API_TOKEN`, `OPENSIGN_WEBHOOK_SECRET`, `OPENSIGN_WEBHOOK_URL`
+- GCS via S3 interop: `GCS_BUCKET_NAME`, `GCS_HMAC_ACCESS_ID`, `GCS_HMAC_SECRET`; the former AWS storage account is retired.
+- OpenSign: `OPENSIGN_BASE_URL`, `OPENSIGN_PUBLIC_URL`, `OPENSIGN_APP_ID`, `OPENSIGN_MASTER_KEY`, `OPENSIGN_USER_EMAIL`, `OPENSIGN_WEBHOOK_SECRET`, `OPENSIGN_WEBHOOK_URL`
 - Dropbox Sign legacy-readable only: `HELLOSIGN_API_KEY`, `HELLOSIGN_CLIENT_ID`, `HELLOSIGN_TEST_MODE`
 - Gmail: `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_CLOUD_PROJECT_ID`
 - Gmail webhook: `GMAIL_WEBHOOK_SECRET`, `GMAIL_WATCH_MAILBOXES`
@@ -119,19 +117,32 @@ Run these before handing off agent or sync changes:
 npm run release:gate
 ```
 
-Expected current state after the May 4, 2026 cleanup:
+Deployment invariants after the 21 September 2026 v2 implementation:
 
 - `npm run release:gate` runs env/route checks, Prisma validate, TypeScript, lint, and build.
-- Vercel Production/Preview must be given `CRON_SECRET`; otherwise scheduled jobs will deny by design.
+- Cloud Run and Cloud Scheduler must be given `CRON_SECRET`; otherwise scheduled jobs will deny by design.
 - Google Pub/Sub must call `/api/webhooks/gmail?token=<GMAIL_WEBHOOK_SECRET>` or send `x-lsc-webhook-secret`.
 - OpenSign must call `/api/webhooks/opensign` and sign the exact raw JSON body with `OPENSIGN_WEBHOOK_SECRET`.
 
 ## Known Risks To Fix Next
 
-- OpenSign live deployment still requires Render-hosted OpenSign, MongoDB, mail, storage, API token, and webhook secret configuration.
+- OpenSign is hosted on the separate `opensign-vm`. Do not reuse that signing VM for generation. Its recovery is separate from Legal document exports.
 - AI extraction source of truth is `DocumentAnalysis`, keyed to Legal documents, versions, KYC documents, or litigation documents. Do not depend on analyzer log JSON except as legacy fallback.
 - Gemini is the primary AI provider for agents. If Anthropic is configured, it is
   only a fallback for provider/quota/rate-limit failures.
 - Run `node scripts/check-agent-hygiene.mjs` when changing agents, agent UI,
   Finance retry routing, or required runtime tables.
 - `.claude/skills/prisma-schema.md` and `.claude/skills/finance-integration.md` are historical references; verify against `prisma/schema.prisma` and current webhook code before relying on them.
+
+## V2 durable workflows
+
+- `scripts/run-document-exports.ts` runs outside the HTTP request, processing
+  export and final-only Drive publication queues plus sourced FX refresh.
+- `/api/cron/document-reviews` materializes idempotent scheduled review tasks.
+  Document and policy changes emit dependency tasks with source provenance.
+- Entity KYC, policy and dispute attachment routes require central legal access.
+- New dispute Finance envelopes contain decimal strings, currency, revision and
+  closure state. Receipt-aware delivery remains pending until receiver setup.
+  Existing contract/tranche/share-grant Finance wire formats are legacy contracts.
+- Slack shares application services and fresh authorization. Its 17/18 command
+  inventory is implementation coverage, not measured successful live operations.

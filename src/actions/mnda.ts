@@ -5,6 +5,7 @@
  * FormData parsing, and cache revalidation. All real work happens in
  * src/lib/mnda.ts, which the Slack route shares.
  */
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { revalidatePath } from "next/cache"
 import { requireRole } from "@/lib/auth"
 import { sendMnda, type MndaSendParams, type MndaSendResult } from "@/lib/mnda"
@@ -23,6 +24,7 @@ function parseCcEmails(raw: string): string[] {
 
 export async function sendMndaAction(formData: FormData): Promise<MndaSendResult> {
   const session = await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   try {
     const templateKind = formString(formData, "templateKind")

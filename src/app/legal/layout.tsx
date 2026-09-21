@@ -1,6 +1,7 @@
 import { requireSession } from "@/lib/auth"
 import { LegalSidebar } from "@/components/shell/legal-sidebar"
 import { LegalTopbar } from "@/components/shell/legal-topbar"
+import { isGlobalDocumentUser } from "@/lib/document-access"
 import { prisma } from "@/lib/prisma"
 
 export default async function LegalLayout({
@@ -10,25 +11,27 @@ export default async function LegalLayout({
 }) {
   const session = await requireSession()
 
-  const checklistItems = await prisma.projectChecklist.findMany({
+  const globalAccess = await isGlobalDocumentUser(session)
+  const checklistItems = globalAccess ? await prisma.projectChecklist.findMany({
     orderBy: [
       { done: "asc" },
       { priority: "asc" },
       { sort_order: "asc" },
       { created_at: "asc" },
     ],
-  })
+  }) : []
 
   return (
     <div className="flex min-h-screen">
       <LegalSidebar
         userRole={session.role}
+        globalAccess={globalAccess}
         userName={session.fullName}
         checklistItems={checklistItems}
       />
-      <div className="flex flex-1 flex-col pl-64">
+      <div className="flex min-w-0 flex-1 flex-col pl-16 lg:pl-64 lg:peer-data-[collapsed=true]:pl-16">
         <LegalTopbar userId={session.userId} />
-        <main className="flex-1 p-6">{children}</main>
+        <main className="min-w-0 flex-1 p-4 lg:p-6">{children}</main>
       </div>
     </div>
   )

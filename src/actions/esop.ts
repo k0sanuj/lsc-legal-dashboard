@@ -1,5 +1,6 @@
 "use server"
 
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { prisma } from "@/lib/prisma"
@@ -25,6 +26,7 @@ function parseVesting(v: string | null): VestingType {
 
 export async function createEsopGrantAction(formData: FormData): Promise<void> {
   await requireRole([...ALLOWED_ROLES])
+  await requireGlobalDocumentAccess()
 
   const employeeName = String(formData.get("employeeName") ?? "")
   const employeeEmail = String(formData.get("employeeEmail") ?? "") || null
@@ -94,6 +96,7 @@ export async function createEsopGrantAction(formData: FormData): Promise<void> {
 
 export async function updateEsopGrantAction(formData: FormData): Promise<void> {
   await requireRole([...ALLOWED_ROLES])
+  await requireGlobalDocumentAccess()
 
   const id = String(formData.get("id") ?? "")
   if (!id) redirect("/legal/esop?error=missing+id")
@@ -157,6 +160,7 @@ export async function updateEsopGrantAction(formData: FormData): Promise<void> {
 
 export async function resyncEsopGrantAction(formData: FormData): Promise<void> {
   await requireRole([...ALLOWED_ROLES])
+  await requireGlobalDocumentAccess()
   const id = String(formData.get("id") ?? "")
   if (!id) return
 

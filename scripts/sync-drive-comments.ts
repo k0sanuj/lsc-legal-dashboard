@@ -1,6 +1,6 @@
 import { config } from "dotenv"
-import { google } from "googleapis"
-import type { drive_v3 } from "googleapis"
+import { GoogleAuth } from "google-auth-library"
+import { drive_v3 } from "googleapis/build/src/apis/drive/v3"
 import type { LifecycleStatus } from "../src/generated/prisma/client"
 
 config({ path: ".env" })
@@ -132,8 +132,8 @@ async function listComments(drive: drive_v3.Drive, fileId: string): Promise<driv
 async function main() {
   const args = parseArgs()
   const { prisma } = await import("../src/lib/prisma")
-  const auth = new google.auth.GoogleAuth({ scopes: [DRIVE_READONLY_SCOPE] })
-  const drive = google.drive({ version: "v3", auth })
+  const auth = new GoogleAuth({ scopes: [DRIVE_READONLY_SCOPE] })
+  const drive = new drive_v3.Drive({ auth })
 
   const operator = await prisma.appUser.findFirst({
     where: { role: { in: ["PLATFORM_ADMIN", "LEGAL_ADMIN", "FINANCE_ADMIN"] } },

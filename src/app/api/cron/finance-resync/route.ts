@@ -14,9 +14,10 @@ const FINANCE_EVENT_TYPES: FinanceEventType[] = [
   "share_grant.created",
   "share_grant.updated",
   "invoice_detected",
+  "dispute.exposure.updated",
 ]
 
-const MAX_ATTEMPTS = 6 // ~1.5h total at 15-min intervals
+const MAX_ATTEMPTS = 6
 
 export async function GET(request: Request) {
   if (!isAuthorizedCronRequest(request)) {
@@ -29,8 +30,8 @@ export async function GET(request: Request) {
     where: {
       source: "legal",
       processed: false,
-      event_type: { in: FINANCE_EVENT_TYPES },
-      created_at: { gte: sevenDaysAgo },
+      event_type: { in: FINANCE_EVENT_TYPES.filter((type) => type !== "dispute.exposure.updated" || process.env.FINANCE_DISPUTE_CONTRACT_VERSION === "1") },
+      OR: [{ created_at: { gte: sevenDaysAgo } }, { event_type: "dispute.exposure.updated" }],
     },
     orderBy: { created_at: "asc" },
     take: 50,
@@ -41,11 +42,13 @@ export async function GET(request: Request) {
   let abandoned = 0
 
   for (const evt of candidates) {
+    // Waiting for a confirmed receiver is not a failed delivery attempt.
+    if (evt.event_type === "dispute.exposure.updated" && process.env.FINANCE_DISPUTE_CONTRACT_VERSION !== "1") continue
     const payload = (evt.payload as Record<string, unknown>) ?? {}
     const lastAttempt = payload._last_attempt as { count?: number } | undefined
     const attempts = (lastAttempt?.count ?? 0) + 1
 
-    if (attempts > MAX_ATTEMPTS) {
+    if (attempts > MAX_ATTEMPTS && evt.event_type !== "dispute.exposure.updated") {
       await prisma.crossModuleEvent.update({
         where: { id: evt.id },
         data: {
@@ -64,6 +67,7 @@ export async function GET(request: Request) {
     const cleanPayload = { ...payload }
     delete cleanPayload._last_attempt
     delete cleanPayload._abandoned
+    delete cleanPayload._abandoned_at
 
     const result = await postToFinance({
       eventId: evt.id,
@@ -89,7 +93,16 @@ export async function GET(request: Request) {
     })
 
     // Mirror final status onto the originating row when we can identify it
-    if (evt.entity_type === "PaymentCycle") {
+    if (evt.entity_type === "LitigationCase" && typeof payload.revision === 'number') {
+      await prisma.litigationCase.updateMany({
+        where: { id: evt.entity_id, exposure_revision: payload.revision },
+        data: {
+          last_finance_post_at: new Date(),
+          finance_post_status: result.ok ? 'synced' : 'failed',
+          last_finance_post_error: result.ok ? null : result.error ?? 'Unknown',
+        },
+      })
+    } else if (evt.entity_type === "PaymentCycle") {
       await prisma.paymentCycle
         .update({
           where: { id: evt.entity_id },

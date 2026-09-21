@@ -8,17 +8,16 @@
  *
  * Env:
  *   SLACK_SIGNING_SECRET   app Signing Secret, verifies every inbound request
- *   SLACK_BOT_TOKEN        bot token (xoxb-...), scopes commands + chat:write
- *   SLACK_LEGAL_ADMINS     "U0AAA:anuj@futureofsports.io,U0BBB:ak@..." pairs of
- *                          Slack member id to dashboard email; no ids are ever
- *                          hardcoded here, see ops/slack-legal.md
+ *   SLACK_BOT_TOKEN        bot token (xoxb-...), scopes commands, chat:write, users:read + users:read.email
  *
- * Authorisation is fail-closed: an empty or malformed SLACK_LEGAL_ADMINS
- * authorises nobody, and a mapped email must still resolve to an active
- * AppUser row before any command is honoured.
+ * Identity is resolved through Slack users.info, then matched to an active
+ * AppUser. Central document entitlements govern each command. An email mapping
+ * in environment configuration is not evidence of the caller's identity.
  */
 import { createHmac, timingSafeEqual } from "node:crypto"
 import { prisma } from "./prisma"
+import type { UserRole } from "@/generated/prisma/client"
+import type { SessionPayload } from "@/lib/session"
 
 const SLACK_API_BASE = "https://slack.com/api"
 const REQUEST_TIMEOUT_MS = 8000
@@ -73,51 +72,40 @@ export interface SlackActor {
   userId: string
   email: string
   display: string
+  role: UserRole
 }
 
-/**
- * Parses SLACK_LEGAL_ADMINS into a Slack-id-to-email map. Slack member ids are
- * case-sensitive and compared exactly; emails are normalized to lowercase.
- * Malformed pairs are dropped silently so one bad entry cannot lock out the
- * rest, and an empty var authorises nobody.
- */
-function parseSlackAdminMap(): Map<string, string> {
-  const map = new Map<string, string>()
-  for (const pair of env("SLACK_LEGAL_ADMINS").split(",")) {
-    const [slackId, email] = pair.split(":").map((part) => part.trim())
-    if (slackId && email && email.includes("@")) {
-      map.set(slackId, email.toLowerCase())
-    }
-  }
-  return map
-}
-
-/**
- * Resolves a Slack member id to a dashboard identity, or null when the caller
- * is not one of the mapped admins or their AppUser row is missing or inactive.
- * Callers turn null into an ephemeral "not authorised" message, never an
- * error dump.
- */
+/** Resolve Slack's current verified profile email, never an operator-authored impersonation map. */
 export async function resolveSlackActor(slackUserId: string): Promise<SlackActor | null> {
-  if (!slackUserId) return null
-
-  const email = parseSlackAdminMap().get(slackUserId)
-  if (!email) return null
-
-  // Fail closed on any lookup error: an authorisation function that throws
-  // turns a database blip into a 500 for Slack, which retries and multiplies
-  // the noise. Unauthorised is the safe answer in every failure mode.
+  if (!/^U[A-Z0-9]+$/.test(slackUserId)) return null
+  const token = env("SLACK_BOT_TOKEN")
+  if (!token) return null
   try {
-    const user = await prisma.appUser.findUnique({
-      where: { email },
-      select: { id: true, email: true, full_name: true, is_active: true },
+    const response = await fetch(`${SLACK_API_BASE}/users.info?user=${encodeURIComponent(slackUserId)}`, {
+      headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5000),
     })
-    if (!user || !user.is_active) return null
-    return { userId: user.id, email: user.email, display: user.full_name }
-  } catch (error) {
-    console.error("[slack] actor lookup failed:", error)
+    if (!response.ok) return null
+    const result = await response.json() as { ok?: boolean; user?: { id?: string; deleted?: boolean; is_bot?: boolean; profile?: { email?: string } } }
+    const member = result.user
+    if (result.ok !== true || member?.id !== slackUserId || member.deleted || member.is_bot || !member.profile?.email) return null
+    const verifiedEmail = member.profile.email.trim().toLowerCase()
+    let email = verifiedEmail
+    const links = JSON.parse(env("SLACK_LEGAL_IDENTITY_LINKS") || "{}") as Record<string, { verifiedEmail?: unknown; appEmail?: unknown }>
+    const link = links[slackUserId]
+    if (link) {
+      if (link.verifiedEmail !== verifiedEmail || typeof link.appEmail !== "string") return null
+      email = link.appEmail.trim().toLowerCase()
+    }
+    const user = await prisma.appUser.findUnique({ where: { email }, select: { id: true, email: true, full_name: true, is_active: true, role: true } })
+    if (!user?.is_active) return null
+    return { userId: user.id, email: user.email, display: user.full_name, role: user.role }
+  } catch {
     return null
   }
+}
+
+export function slackSession(actor: SlackActor): SessionPayload {
+  return { userId: actor.userId, email: actor.email, fullName: actor.display, role: actor.role, exp: Date.now() + 60_000 }
 }
 
 export interface SlackApiResult {

@@ -7,6 +7,7 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { runInNewContext } from "node:vm"
 import ts from "typescript"
+import * as crypto from "node:crypto"
 
 const allowedRoles = ["PLATFORM_ADMIN", "FINANCE_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"]
 const deniedRoles = ["FSP_FINANCE", "COMMERCIAL_OFFICER", "TEAM_MEMBER", "EXTERNAL_AUDITOR"]
@@ -45,7 +46,13 @@ function createFixture(provider) {
     effects[kind] += 1
     throw new Error(`Unexpected ${kind} access during paused generation`)
   }
-  const prisma = new Proxy({}, { get: () => rejectEffect("database") })
+  const prisma = new Proxy({}, { get: (_target, property) => {
+    if (property === 'appUser') return { async findUnique(query) {
+      assert.equal(query.where.id, session?.userId)
+      return session ? { email: session.email, role: session.role, full_name: session.fullName, is_active: true } : null
+    } }
+    return rejectEffect("database")
+  } })
   const fetch = () => rejectEffect("network")
   const env = Object.freeze({ AI_PROVIDER: provider })
   const load = (path, dependencies) => loadModule(path, dependencies, env, fetch)
@@ -64,10 +71,28 @@ function createFixture(provider) {
       },
     },
   })
+  const protocol = load("src/lib/contract-generation-protocol.ts", { "node:crypto": crypto })
+  const access = { requireGlobalDocumentAccess: () => rejectEffect("database") }
+  const queue = load("src/lib/contract-generation-queue.ts", {
+    "node:crypto": crypto,
+    "@/lib/prisma": { prisma },
+    "@/lib/document-access": access,
+    "./contract-generation": state,
+    "./contract-generation-protocol": protocol,
+    "@/generated/prisma/client": { Entity: {} },
+  })
   const actions = load("src/actions/generate.ts", {
+    "node:crypto": crypto,
     "@/lib/auth": auth,
     "@/lib/prisma": { prisma },
     "@/lib/contract-generation": state,
+    "@/lib/document-access": access,
+    "@/lib/s3": { uploadBufferToS3: () => rejectEffect("network") },
+    "@/lib/document-artifacts": { recordArtifact: () => rejectEffect("database") },
+    "@/lib/template-service": { saveTextTemplate: () => rejectEffect("database") },
+    "@/lib/contract-generation-queue": queue,
+    "@/lib/contract-generation-protocol": protocol,
+    "@/generated/prisma/client": { Entity: {}, DocumentCategory: {}, Prisma: {} },
     "next/cache": { revalidatePath: () => rejectEffect("cache") },
     "@anthropic-ai/sdk": class {
       constructor() {
@@ -91,7 +116,7 @@ function createFixture(provider) {
   const page = load("src/app/legal/generate/page.tsx", {
     "@/lib/auth": auth,
     "@/lib/prisma": { prisma },
-    "@/lib/contract-generation": state,
+    "@/lib/contract-generation-queue": queue,
     "@/lib/constants": { ENTITIES: [] },
     "react/jsx-runtime": { jsx, jsxs: jsx },
     "next/link": Symbol("Link"),
@@ -181,4 +206,4 @@ for (const provider of ["gemini", "anthropic"]) {
   fixture.assertNoEffects()
 }
 
-console.log(`Generation pause checks passed: ${authorizedCalls} authorized calls, ${deniedCalls} auth denials and paused-page checks across both providers; no provider construction, provider calls, database, network or cache activity.`)
+console.log(`Generation pause checks passed: ${authorizedCalls} authorized calls, ${deniedCalls} auth denials and paused-page checks across both providers; no provider construction, provider calls, document database, network or cache activity; only fresh authorization reads allowed.`)

@@ -57,7 +57,7 @@ export async function establishSessionForUser(
 }
 
 export async function requireSession(): Promise<SessionPayload> {
-  const session = await getSessionFromCookie()
+  const session = await getOptionalSession()
   if (!session) {
     redirect("/login")
   }
@@ -75,7 +75,11 @@ export async function requireRole(
 }
 
 export async function getOptionalSession(): Promise<SessionPayload | null> {
-  return getSessionFromCookie()
+  const cookie = await getSessionFromCookie()
+  if (!cookie) return null
+  const user = await prisma.appUser.findUnique({ where: { id: cookie.userId }, select: { email: true, is_active: true, role: true, full_name: true } })
+  if (!user?.is_active || user.email.toLowerCase() !== cookie.email.toLowerCase()) return null
+  return { ...cookie, email: user.email, role: user.role, fullName: user.full_name }
 }
 
 export async function logoutCurrentUser() {

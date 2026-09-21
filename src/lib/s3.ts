@@ -2,10 +2,9 @@
  * File storage for the legal platform, on Google Cloud Storage.
  *
  * The estate is GCP-only, so objects live in the fsp-legal-esign-documents
- * bucket (asia-southeast1, next to the database and Cloud Run). Access goes
+ * bucket (asia-southeast1, beside Cloud Run; PostgreSQL is hosted by Neon). Access goes
  * through GCS's S3-compatible XML interop API with an HMAC key, which keeps
- * the AWS SDK client and, more importantly, works from Vercel where no
- * service-account ADC exists. The exported names keep their historical s3
+ * the existing AWS SDK client with the GCS endpoint. The exported names keep their historical s3
  * spelling because eight call sites use them; the semantics are unchanged.
  *
  * Env:
@@ -15,8 +14,9 @@
  *
  * Legacy: file_url values written before 2026-08-30 point at
  * s3.amazonaws.com. That AWS account is retired, so getS3KeyFromUrl returns
- * null for them and callers treat them as plain external URLs.
+ * null for them and protected readers report an unavailable legacy source.
  */
+import { randomUUID } from "node:crypto"
 import {
   S3Client,
   PutObjectCommand,
@@ -24,6 +24,8 @@ import {
   GetObjectCommand,
 } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
+import { createReadStream } from "node:fs"
+import { stat } from "node:fs/promises"
 
 const GCS_ENDPOINT = "https://storage.googleapis.com"
 
@@ -77,6 +79,16 @@ export async function uploadBufferToS3(
   return getPublicUrl(key)
 }
 
+/** File-backed upload keeps large export archives out of process memory. */
+export async function uploadLocalFileToS3(localPath: string, key: string, contentType: string) {
+  const info = await stat(localPath)
+  await getS3Client().send(new PutObjectCommand({
+    Bucket: getBucketName(), Key: key, Body: createReadStream(localPath),
+    ContentLength: info.size, ContentType: contentType,
+  }))
+  return getPublicUrl(key)
+}
+
 export async function deleteFromS3(key: string): Promise<void> {
   await getS3Client().send(
     new DeleteObjectCommand({ Bucket: getBucketName(), Key: key })
@@ -120,5 +132,5 @@ export function getS3Key(
 ): string {
   const timestamp = Date.now()
   const safe = filename.replace(/[^a-zA-Z0-9._-]/g, "_")
-  return `${entity.toLowerCase()}/${category.toLowerCase()}/${timestamp}-${safe}`
+  return `${entity.toLowerCase()}/${category.toLowerCase()}/${timestamp}-${randomUUID()}-${safe}`
 }

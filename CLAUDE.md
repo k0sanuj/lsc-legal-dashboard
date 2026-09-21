@@ -7,12 +7,14 @@ Module 2 of the LSC Operations Platform. Full legal operations platform: complia
 
 ## Agent Architecture
 
-AI contract generation and refinement are paused in `src/actions/generate.ts`
-and the generator page, using the shared state in `src/lib/contract-generation.ts`.
-Keep authorization before the pause and return before reading templates or
-calling providers. Enable drafting only after the Claude CLI worker and review
-gates are ready. Existing document analysis agents and deterministic MNDA sending
-are separate from this pause. Verify with `node scripts/verify-generation-pause.mjs`.
+Contract generation uses an isolated Codex CLI worker authenticated with Anuj's
+ChatGPT account, as explicitly requested on 21 September 2026. App requesters are
+separate from the worker owner. `GENERATION_ENABLED=1` alone is insufficient:
+the owner, requester, live heartbeat, synthetic inference proof and exact skill
+hash must all pass. Drafts require independent fairness and cross-reference
+reviews bound to their content hash plus a fresh human approval before saving.
+No API drafting fallback. See `ops/generation-worker/README.md`.
+Existing analysis agents and deterministic MNDA sending are separate workflows.
 
 Agents live in `src/lib/agents/`. Each extends `BaseAgent` and implements `run()`.
 
@@ -28,11 +30,11 @@ Agents live in `src/lib/agents/`. Each extends `BaseAgent` and implements `run()
 - **Database**: NeonDB (PostgreSQL) via Prisma 7.6.0
 - **UI**: shadcn/ui + Tailwind CSS v4 (dark mode primary)
 - **Charts**: Recharts
-- **AI**: Google Gemini API (@google/generative-ai)
+- **AI**: Codex CLI with ChatGPT for drafting; existing Gemini/Anthropic analysis agents
 - **Drag & Drop**: @dnd-kit/core
 - **Icons**: lucide-react
 - **Auth**: Custom cookie-based HMAC sessions
-- **Deploy**: Vercel + GitHub
+- **Deploy**: GCP Cloud Run `lsc-legal-dashboard`, project `fsp-legal-esign`, region `asia-southeast1`; GitHub source
 
 ## Key Rules
 1. **Read Next.js 16 docs first**: Check `node_modules/next/dist/docs/` before writing any code. `params` and `searchParams` are Promises in page components — always `await` them.
@@ -41,7 +43,7 @@ Agents live in `src/lib/agents/`. Each extends `BaseAgent` and implements `run()
 4. **Prisma for all DB access**: Use the singleton from `src/lib/prisma.ts`. Never raw SQL unless reading finance tables.
 5. **Server Actions for mutations**: All writes go through `src/actions/`. Always call `requireSession()` or `requireRole()` first.
 6. **Financial figures use JetBrains Mono**: `font-mono tabular-nums` class on all numbers.
-7. **AED is primary currency**: Format with `Intl.NumberFormat('en-AE', { style: 'currency', currency: 'AED' })`.
+7. **USD reporting default**: Keep agreement-currency Decimal values and display native amounts with sourced USD references using `src/lib/money.ts`. Missing/stale FX and unknown amounts remain explicit. Never relabel native amounts or use floating-point money.
 
 ## Skills Reference
 - `.claude/skills/agentic-flows.md` — Current agent registry, lifecycle triggers, cron/webhook/Finance sync rules, verification checklist
@@ -63,3 +65,20 @@ Agents live in `src/lib/agents/`. Each extends `BaseAgent` and implements `run()
 
 ## Permission Roles (8 roles from PRD)
 Platform Admin (AK) | Finance Admin (Anuj) | Legal Admin (Arvind) | Ops Admin (AM) | FSP Finance (Tabitha, Sayan) | Commercial Officer | Team Member | External Auditor
+
+## Legal OS v2 invariants
+
+- The central document policy in `src/lib/document-access.ts` limits global access
+  to the four confirmed futureofsports.io principals. Platform role alone does
+  not bypass it. Fresh AppUser state controls sessions and individual grants.
+- Artifact bytes and provenance are immutable. Signed lineage binds to the exact
+  populated artifact sent to the provider, never the current attachment.
+- Entity legal identities require sourced evidence; arena codes are a separate
+  naming lexicon. Existing unclassified matters and unmapped KYC remain visible.
+- Review schedule mutations and dependency events are durable database writes.
+  Public cadence is 14 days for six calendar months; later cadence is unset.
+- Backup archives are scoped document exports with manifests and missing-file
+  reports, not proof of database or OpenSign recovery.
+- Use explicit GCP project flags. The operator's default gcloud project is unrelated.
+- Runtime configuration and credentials are separate from tested implementation.
+  See `docs/v2/documents-runtime.md`, `docs/v2/entities-runtime.md`, and `PLAN.md`.

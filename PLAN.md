@@ -8,17 +8,22 @@ Decisions are in [docs/decisions.md](docs/decisions.md).
 
 ## Execution rule
 
-Complete exactly one unchecked task per run, verify before checking it off, and
-commit each completed task separately. One task per PR. Do not begin a UI task
-until Anuj selects the published static direction. The first task changes only
-planning documents and standalone mocks, not application behavior.
+On 21 September 2026, Anuj selected B+C and explicitly authorized completing all
+v2 implementations in this run and deploying them to the GCP service below.
+This overrides the earlier one-task-per-run preparation limit. Keep separate
+verified implementation commits where practical. External integrations only count
+as live after actual runtime acceptance, and missing credentials remain explicit.
 
 For implementation, read the installed Next.js guide relevant to the change.
 Run focused checks plus `npm run release:gate` before opening a real PR. Agent,
 webhook, cron and Finance work also follows `.claude/skills/agentic-flows.md`.
 Every multi-agent round ends with independent adversarial verification and fixes.
-Production changes, live database work and daily-driver build channels remain
-outside this preparation pass.
+Authorized production target: GCP project `fsp-legal-esign`, region
+`asia-southeast1`, Cloud Run service `lsc-legal-dashboard` at
+https://lsc-legal-dashboard-221817683102.asia-southeast1.run.app.
+Use explicit project flags. The local gcloud default belongs to another project.
+Take a private recovery snapshot before applying additive schema changes and
+preserve the prior Cloud Run revision for rollback.
 
 ## Tasks in dependency order
 
@@ -36,7 +41,7 @@ outside this preparation pass.
 - [ ] V2-12: Import Arvind's correlation/dependency table as review triggers with source provenance. Verify missing references, cycles, duplicate imports and one task per triggering change. Do not fabricate dependencies while the source table is absent.
 - [ ] V2-13: Split Litigation and Arbitration trackers on a shared matter foundation. Add claim type and dispute kind, reuse existing court/tribunal and party fields, and use precise native-currency exposure. Keep existing unclassified matters visible for review. Verify tracker separation, edits, unknown exposure and permissions.
 - [ ] V2-14: Deliver dispute exposure to Finance through the durable sender with an agreed receiver contract, idempotency and retries. Cover creation, changes and closure. Validate decimal/currency payloads and queue-versus-delivery states with a mocked receiver. Live acceptance requires explicit runtime authorization and receiver evidence.
-- [ ] V2-15: Build an isolated Claude CLI generation worker with durable jobs, official per-user authentication, limits, cancellation and attributable outputs. Prove authentication and loaded skills in the actual nonproduction worker, without silent API fallback or copied browser/session tokens. Confirm eligible plan, host and authentication arrangement first.
+- [ ] V2-15: Build an isolated Codex CLI generation worker using Anuj's ChatGPT subscription, with durable jobs, separately audited requester identity, limits, cancellation and attributable outputs. Prove authentication and loaded skills in the actual nonproduction worker, without silent API fallback or copied browser/session tokens. Confirm eligible plan, host and authentication arrangement first.
 - [ ] V2-16: Add versioned fair-counterparty drafting guardrails, independent review and clause cross-reference checking in parallel after drafting. Bind checks to the exact draft hash; editing invalidates old approvals. Test missing schedules, dangling references, undefined terms, inconsistent parties and matter-context leakage. Activate generation only after worker and review gates pass.
 - [ ] V2-17: Add permission-aware cross-drive retrieval and document-access requests through Slack; identify the intended Copilot environment before integration. Verify denials reveal no metadata, grants/revocation apply across surfaces, and source file/version evidence accompanies results.
 - [ ] V2-18: Expand Slack operation coverage through shared application services. Define the operation inventory and denominator before claiming 90% coverage. Include review completion, entity/KYC updates, dispute updates, generation job status and backup status; preserve signature/replay protections and audit receipts.

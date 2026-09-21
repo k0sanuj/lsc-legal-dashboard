@@ -1,5 +1,6 @@
 'use server'
 
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { createEmbeddedUnclaimedDraft } from '@/lib/hellosign'
@@ -29,6 +30,7 @@ async function getDropboxSignFileUrl(fileUrl: string): Promise<string> {
 
 export async function createEmbeddedSignatureDraft(documentId: string) {
   const session = await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+  await requireGlobalDocumentAccess()
 
   const doc = await prisma.legalDocument.findUnique({
     where: { id: documentId },

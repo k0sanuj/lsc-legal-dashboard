@@ -2,8 +2,11 @@ import { NextRequest } from "next/server"
 import { after } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { sendMnda, type MndaSendParams } from "@/lib/mnda"
-import { postSlackMessage, resolveSlackActor, verifySlackSignature } from "@/lib/slack"
+import { postSlackEphemeral, resolveSlackActor, verifySlackSignature, slackSession, type SlackActor } from "@/lib/slack"
 import { buildMndaFailureBlocks, buildMndaSuccessBlocks, type MndaOutcomeInput } from "@/lib/slack-blocks"
+
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
+import { Prisma } from "@/generated/prisma/client"
 
 export const runtime = "nodejs"
 
@@ -12,7 +15,7 @@ export const runtime = "nodejs"
  * "mnda_send").
  *
  * A view_submission carries NO response_url and NO channel, so the outcome is
- * reported with chat.postMessage to the channel id stashed in the modal's
+ * reported privately with chat.postEphemeral to the channel id stashed in the modal's
  * private_metadata at open time, falling back to SLACK_LEGAL_CHANNEL_ID.
  *
  * Slack expects a response within 3 seconds: field problems come back as
@@ -24,22 +27,6 @@ export const runtime = "nodejs"
  */
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const PROCESSED_VIEW_CAP = 200
-
-// Dedupe on view.id so a double-submit race cannot send two MNDAs. This Set is
-// module scope, so it only protects within one warm serverless instance; a
-// duplicate landing on a cold second instance would not be caught. Slack does
-// not retry view_submissions, so this covers the realistic double-click case.
-const processedViewIds = new Set<string>()
-
-function markViewProcessed(viewId: string) {
-  if (processedViewIds.size >= PROCESSED_VIEW_CAP) {
-    const oldest = processedViewIds.values().next().value
-    if (oldest) processedViewIds.delete(oldest)
-  }
-  processedViewIds.add(viewId)
-}
-
 interface SlackStateValue {
   value?: string | null
   selected_option?: { value?: string } | null
@@ -145,8 +132,9 @@ function parseMetadata(raw: string): ModalMetadata {
 /** Runs inside after(): performs the send and reports the outcome to Slack. Only ever console.errors. */
 async function sendAndReport(
   params: MndaSendParams,
-  actor: { userId: string; email: string; display: string },
-  channelId: string
+  actor: SlackActor,
+  channelId: string,
+  slackUserId: string
 ) {
   try {
     const outcome: MndaOutcomeInput = {
@@ -160,6 +148,8 @@ async function sendAndReport(
       sentBy: actor.display,
     }
 
+    const current = await requireGlobalDocumentAccess(slackSession(actor))
+    if (!["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"].includes(current.role)) throw new Error("MNDA editing access is required")
     const result = await sendMnda(params, actor)
     if (!result.success && !result.safe) {
       console.error("[slack] MNDA send failed with internal error:", result.error)
@@ -168,7 +158,7 @@ async function sendAndReport(
       ? ""
       : result.safe
         ? result.error
-        : "MNDA generation failed. Nothing was sent; the details are in the dashboard server logs."
+        : "MNDA sending could not be confirmed. Check the document and signing provider before retrying."
     const blocks = result.success
       ? buildMndaSuccessBlocks(outcome, result.documentId)
       : buildMndaFailureBlocks(outcome, channelError)
@@ -179,22 +169,15 @@ async function sendAndReport(
     const channel = channelId || process.env.SLACK_LEGAL_CHANNEL_ID?.trim() || ""
     if (!channel) {
       console.error("[slack] no channel to report the MNDA outcome to; result:", text)
-      return
+      return { sent: result.success, delivered: false }
     }
 
-    const posted = await postSlackMessage(channel, blocks, text)
-    if (!posted.ok) {
-      // The originating channel can refuse the bot (private channel it is not
-      // in); fall back to the legal channel so the outcome is never silent.
-      const fallback = process.env.SLACK_LEGAL_CHANNEL_ID?.trim() ?? ""
-      console.error("[slack] outcome post failed:", posted.error)
-      if (fallback && fallback !== channel) {
-        const retried = await postSlackMessage(fallback, blocks, text)
-        if (!retried.ok) console.error("[slack] fallback outcome post failed:", retried.error)
-      }
-    }
+    const posted = await postSlackEphemeral(channel, slackUserId, blocks, text)
+    if (!posted.ok) console.error("[slack] private outcome delivery failed")
+    return { sent: result.success, delivered: posted.ok }
   } catch (error) {
-    console.error("[slack] MNDA send from Slack failed:", error)
+    console.error("[slack] MNDA send from Slack failed:", error instanceof Error ? error.name : "UnknownError")
+    return { sent: null, delivered: false }
   }
 }
 
@@ -225,35 +208,8 @@ export async function POST(request: NextRequest) {
   }
 
   const viewId = payload.view?.id ?? ""
-  if (viewId && processedViewIds.has(viewId)) {
-    return new Response(null, { status: 200 })
-  }
-  // Claim this view id in-memory BEFORE any await so two near-simultaneous
-  // submissions on one instance cannot interleave past the check.
-  if (viewId) markViewProcessed(viewId)
-
+  if (!viewId) return new Response(null, { status: 400 })
   try {
-    // Durable claim across serverless instances: WebhookEventLog.event_hash is
-    // unique, so exactly one instance wins the insert; the loser acknowledges
-    // and drops the duplicate. This is the same idempotency device the
-    // OpenSign and Mailgun webhooks use.
-    if (viewId) {
-      try {
-        await prisma.webhookEventLog.create({
-          data: {
-            provider: "slack",
-            event_hash: `slack-view-${viewId}`,
-            event_type: "mnda_send_submission",
-            processing_status: "processed",
-            processed_at: new Date(),
-          },
-        })
-      } catch {
-        // Unique violation: another instance already owns this submission.
-        return new Response(null, { status: 200 })
-      }
-    }
-
     // Re-authorise independently: this is a fresh inbound request and the
     // modal's private_metadata proves nothing about who pressed submit.
     const actor = await resolveSlackActor(payload.user?.id ?? "")
@@ -269,12 +225,20 @@ export async function POST(request: NextRequest) {
       return Response.json({ response_action: "errors", errors })
     }
 
+    const current = await requireGlobalDocumentAccess(slackSession(actor))
+    if (!["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"].includes(current.role)) throw new Error("MNDA editing access is required")
+    const claim = await prisma.webhookEventLog.create({ data: { provider: 'slack', event_hash: `slack-view-${viewId}`, event_type: 'mnda_send_submission', processing_status: 'processing', raw_payload: { actorId: actor.userId } } }).catch(error => {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return null
+      throw error
+    })
+    if (!claim) return new Response(null, { status: 200 })
     const metadata = parseMetadata(payload.view?.private_metadata ?? "")
 
     // Empty 200 closes the modal; the send itself must not eat into Slack's
     // 3 second budget.
     after(async () => {
-      await sendAndReport(params, actor, metadata.channelId ?? "")
+      const outcome = await sendAndReport(params, actor, metadata.channelId ?? "", payload.user?.id ?? "")
+      await prisma.webhookEventLog.update({ where: { id: claim.id }, data: { processing_status: outcome.sent === null ? "uncertain" : outcome.sent ? "processed" : "failed", processed_at: new Date(), raw_payload: { actorId: actor.userId, sent: outcome.sent, delivered: outcome.delivered } } })
     })
 
     return new Response(null, { status: 200 })

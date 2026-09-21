@@ -1,3 +1,4 @@
+import { isGlobalDocumentUser } from "@/lib/document-access"
 import { NextResponse } from 'next/server'
 import { runAgent, routeMessage, processMessagesFor } from '@/lib/agents/orchestrator'
 import { isRunnableAgentId, type AgentId } from '@/lib/agents/types'
@@ -8,7 +9,7 @@ const ALLOWED_ROLES = new Set(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
 export async function POST(request: Request) {
   try {
     const session = await getOptionalSession()
-    if (!session || !ALLOWED_ROLES.has(session.role)) {
+    if (!session || !ALLOWED_ROLES.has(session.role) || !await isGlobalDocumentUser(session)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

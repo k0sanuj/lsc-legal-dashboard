@@ -1,5 +1,9 @@
 "use server"
 
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
+import { recordArtifact } from "@/lib/document-artifacts"
+import { notifyDocumentReviewChange } from "@/lib/review-service"
+import { Prisma } from "@/generated/prisma/client"
 import { prisma } from "@/lib/prisma"
 import { requireRole } from "@/lib/auth"
 import { VALID_TRANSITIONS } from "@/lib/constants"
@@ -15,6 +19,11 @@ import type { AgentId } from "@/lib/agents/types"
 import type { LegalDocument, LifecycleStatus } from "@/generated/prisma/client"
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+
+/** Optional background work cannot change the receipt for a committed document mutation. */
+function scheduleAfterSave(work: () => Promise<void>) {
+  try { after(work) } catch (error) { console.error('Post-save work could not be scheduled (non-blocking):', error) }
+}
 
 // Lifecycle states for which we mirror a contract to Finance. Pre-signature
 // drafts (DRAFT/IN_REVIEW/NEGOTIATION/AWAITING_SIGNATURE) are NOT synced —
@@ -92,6 +101,7 @@ export async function createDocument(formData: FormData) {
     "LEGAL_ADMIN",
     "OPS_ADMIN",
   ])
+  await requireGlobalDocumentAccess()
 
   const title = formData.get("title") as string
   const category = formData.get("category") as string
@@ -99,6 +109,8 @@ export async function createDocument(formData: FormData) {
   const sport = (formData.get("sport") as string) || null
   const counterparty = formData.get("counterparty") as string | null
   const valueStr = formData.get("value") as string | null
+  const currency = String(formData.get("currency") || "USD").trim().toUpperCase()
+  if (!/^[A-Z]{3}$/.test(currency) || (valueStr && !/^\d+(\.\d{1,6})?$/.test(valueStr))) return { success: false, error: "Enter a valid currency and nonnegative decimal amount." }
   const expiryStr = formData.get("expiry_date") as string | null
   const notes = formData.get("notes") as string | null
   const parentDocId = formData.get("parent_doc_id") as string | null
@@ -128,8 +140,8 @@ export async function createDocument(formData: FormData) {
       extractedText = await extractTextFromFile(file)
     }
 
-    // 2. Create the document record
-    const document = await prisma.legalDocument.create({
+    const { document, initialVersion } = await prisma.$transaction(async tx => {
+    const document = await tx.legalDocument.create({
       data: {
         title,
         category: category as never,
@@ -137,7 +149,8 @@ export async function createDocument(formData: FormData) {
         sport: sport || null,
         owner_id: session.userId,
         counterparty: counterparty || null,
-        value: valueStr ? parseFloat(valueStr) : null,
+        value: valueStr ? new Prisma.Decimal(valueStr) : null,
+        currency,
         expiry_date: expiryStr ? new Date(expiryStr) : null,
         notes: notes || null,
         parent_doc_id: parentDocId || null,
@@ -146,8 +159,10 @@ export async function createDocument(formData: FormData) {
       },
     })
 
+    if (hasFile && fileUrl) await recordArtifact({ documentId: document.id, stage: 'populated', fileUrl, originalName: file.name, mimeType: file.type || 'application/octet-stream', bytes: Buffer.from(await file.arrayBuffer()), actorId: session.userId }, tx)
+
     // 3. Initial version + lifecycle event
-    const initialVersion = await prisma.documentVersion.create({
+    const initialVersion = await tx.documentVersion.create({
       data: {
         document_id: document.id,
         version_number: 1,
@@ -157,7 +172,7 @@ export async function createDocument(formData: FormData) {
       },
     })
 
-    await prisma.lifecycleEvent.create({
+    await tx.lifecycleEvent.create({
       data: {
         document_id: document.id,
         from_status: "DRAFT",
@@ -167,10 +182,13 @@ export async function createDocument(formData: FormData) {
       },
     })
 
+      return { document, initialVersion }
+    })
+
     // 4. If a file was uploaded, fire the analyzer in the background on its
     // actual text content. UI returns instantly; AI runs via after().
     if (hasFile && extractedText.trim()) {
-      after(async () => {
+      scheduleAfterSave(async () => {
         try {
           await runAgent("agreement-analyzer", {
             documentId: document.id,
@@ -206,6 +224,7 @@ export async function transitionDocument(
     "LEGAL_ADMIN",
     "OPS_ADMIN",
   ])
+  await requireGlobalDocumentAccess()
 
   try {
     const document = await prisma.legalDocument.findUnique({
@@ -227,21 +246,14 @@ export async function transitionDocument(
       }
     }
 
-    await prisma.$transaction([
-      prisma.legalDocument.update({
-        where: { id: documentId },
-        data: { lifecycle_status: toStatus },
-      }),
-      prisma.lifecycleEvent.create({
-        data: {
-          document_id: documentId,
-          from_status: currentStatus,
-          to_status: toStatus,
-          transitioned_by: session.userId,
-          notes: notes || null,
-        },
-      }),
-    ])
+    await prisma.$transaction(async tx => {
+      await tx.legalDocument.update({ where: { id: documentId }, data: { lifecycle_status: toStatus } })
+      const event = await tx.lifecycleEvent.create({ data: {
+        document_id: documentId, from_status: currentStatus, to_status: toStatus,
+        transitioned_by: session.userId, notes: notes || null,
+      } })
+      await notifyDocumentReviewChange(documentId, `lifecycle:${event.id}`, tx)
+    })
 
     revalidatePath("/legal")
     revalidatePath("/legal/documents")
@@ -254,20 +266,15 @@ export async function transitionDocument(
     const willEmitFinance = SYNC_FROM_STATES.has(toStatus)
 
     if (agentId || willEmitFinance) {
-      const docContent = agentId
-        ? await prisma.legalDocument.findUnique({
-            where: { id: documentId },
-            select: { notes: true },
-          })
-        : null
-      const agentInput =
-        agentId === "agreement-analyzer"
-          ? { documentId, content: docContent?.notes ?? "" }
-          : { documentId }
-
-      after(async () => {
+      scheduleAfterSave(async () => {
         if (agentId) {
           try {
+            const docContent = agentId === "agreement-analyzer"
+              ? await prisma.legalDocument.findUnique({ where: { id: documentId }, select: { notes: true } })
+              : null
+            const agentInput = agentId === "agreement-analyzer"
+              ? { documentId, content: docContent?.notes ?? "" }
+              : { documentId }
             await runAgent(agentId, agentInput)
           } catch (err) {
             console.error(`Lifecycle agent ${agentId} failed for ${documentId}:`, err)
@@ -297,6 +304,7 @@ export async function transitionDocument(
  */
 export async function resyncDocumentToFinance(formData: FormData): Promise<void> {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "FINANCE_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   const id = String(formData.get("id") ?? "")
   if (!id) return

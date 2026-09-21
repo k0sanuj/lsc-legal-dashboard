@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto"
 import { config } from "dotenv"
-import { google } from "googleapis"
-import type { gmail_v1 } from "googleapis"
+import { JWT } from "google-auth-library"
+import { gmail_v1 } from "googleapis/build/src/apis/gmail/v1"
 
 config({ path: ".env" })
 config({ path: ".env.local", override: true })
@@ -213,13 +213,13 @@ function getCredentials() {
 
 function gmailClient(mailbox: SourceMailbox) {
   const credentials = getCredentials()
-  const auth = new google.auth.JWT({
+  const auth = new JWT({
     email: credentials.client_email,
     key: credentials.private_key,
     scopes: [GMAIL_READONLY_SCOPE],
     subject: mailbox,
   })
-  return google.gmail({ version: "v1", auth })
+  return new gmail_v1.Gmail({ auth })
 }
 
 function headerValue(message: gmail_v1.Schema$Message, name: string): string {

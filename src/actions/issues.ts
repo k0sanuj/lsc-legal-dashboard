@@ -1,5 +1,6 @@
 "use server"
 
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { prisma } from "@/lib/prisma"
 import { requireSession } from "@/lib/auth"
 import { revalidatePath } from "next/cache"
@@ -7,6 +8,7 @@ import type { IssueStatus, IssueCategory, Priority } from "@/generated/prisma/cl
 
 export async function createIssue(formData: FormData) {
   const session = await requireSession()
+  await requireGlobalDocumentAccess()
 
   const title = formData.get("title") as string
   const description = formData.get("description") as string
@@ -44,6 +46,7 @@ export async function updateIssueStatus(
   resolution?: string
 ) {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   if (!issueId || !status) {
     throw new Error("Missing required fields: issueId, status")

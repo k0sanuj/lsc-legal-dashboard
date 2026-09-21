@@ -1,7 +1,10 @@
 "use server"
 
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { revalidatePath } from "next/cache"
 import Anthropic from "@anthropic-ai/sdk"
+import { recordArtifact } from "@/lib/document-artifacts"
+import { uploadBufferToS3, getS3Key } from "@/lib/s3"
 import { prisma } from "@/lib/prisma"
 import { requireRole } from "@/lib/auth"
 import { extractTextFromFile } from "@/lib/extract-text"
@@ -248,6 +251,7 @@ export async function analyzeTemplateUpload(formData: FormData): Promise<
   | { success: false; error: string }
 > {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return { success: false, error: "ANTHROPIC_API_KEY is not configured" }
@@ -285,7 +289,8 @@ export async function analyzeTemplateUpload(formData: FormData): Promise<
 }
 
 export async function createTemplate(formData: FormData) {
-  await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN"])
+  const session = await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   const uploadedFile = uploadedTemplateFile(formData)
   const name = ((formData.get("name") as string) || filenameToTemplateName(uploadedFile)).trim()
@@ -312,14 +317,14 @@ export async function createTemplate(formData: FormData) {
     return { success: false, error: "Invalid variables format" }
   }
 
-  const template = await prisma.contractTemplate.create({
-    data: {
-      name,
-      category,
-      entity,
-      content,
-      variables,
-    },
+  const bytes = uploadedFile ? Buffer.from(await uploadedFile.arrayBuffer()) : Buffer.from(content, 'utf8')
+  const originalName = uploadedFile?.name || `${name}.txt`
+  const mimeType = uploadedFile?.type || 'text/plain'
+  const fileUrl = await uploadBufferToS3(bytes, getS3Key(entity || 'LSC', 'templates', originalName), mimeType)
+  const template = await prisma.$transaction(async tx => {
+    const created = await tx.contractTemplate.create({ data: { name, category, entity, content, variables } })
+    await recordArtifact({ templateId: created.id, stage: 'template', fileUrl, originalName, mimeType, bytes, actorId: session.userId }, tx)
+    return created
   })
 
   revalidatePath("/legal/templates")

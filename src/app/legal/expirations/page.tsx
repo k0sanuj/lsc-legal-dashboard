@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireSession } from "@/lib/auth"
 import { formatAED, formatDate, daysUntil } from "@/lib/constants"
 import { ENTITIES } from "@/lib/constants"
@@ -45,6 +46,7 @@ export default async function ExpirationsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   const params = await searchParams
   const entityFilter = typeof params.entity === "string" ? params.entity : ""

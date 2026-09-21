@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto"
 import { config } from "dotenv"
-import { google } from "googleapis"
-import type { GoogleAuth } from "google-auth-library"
-import type { drive_v3 } from "googleapis"
+import { GoogleAuth } from "google-auth-library"
+import { drive_v3 } from "googleapis/build/src/apis/drive/v3"
 
 config({ path: ".env" })
 config({ path: ".env.local", override: true })
@@ -263,8 +262,8 @@ async function withRetry<T>(label: string, operation: () => Promise<T>): Promise
 }
 
 async function driveClient() {
-  const auth = new google.auth.GoogleAuth({ scopes: [DRIVE_READONLY_SCOPE] })
-  return { drive: google.drive({ version: "v3", auth }), auth }
+  const auth = new GoogleAuth({ scopes: [DRIVE_READONLY_SCOPE] })
+  return { drive: new drive_v3.Drive({ auth }), auth }
 }
 
 async function listAllFiles(

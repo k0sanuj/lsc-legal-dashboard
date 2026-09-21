@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireSession } from "@/lib/auth"
 import { formatDate } from "@/lib/constants"
 import { cn } from "@/lib/utils"
@@ -105,6 +106,7 @@ export default async function IssuesPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   const params = await searchParams
   const categoryFilter = typeof params.category === "string" ? params.category : undefined

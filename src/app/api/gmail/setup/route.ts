@@ -1,3 +1,4 @@
+import { isGlobalDocumentUser } from "@/lib/document-access"
 import { watchInboxes } from '@/lib/gmail'
 import { verifySessionToken } from '@/lib/session'
 
@@ -6,7 +7,7 @@ export async function POST(request: Request) {
   const cookieHeader = request.headers.get('cookie') ?? ''
   const match = cookieHeader.match(/lsc_legal_session=([^;]+)/)
   const session = match?.[1] ? await verifySessionToken(match[1]) : null
-  if (!session || !['PLATFORM_ADMIN', 'LEGAL_ADMIN'].includes(session.role)) {
+  if (!session || !['PLATFORM_ADMIN', 'LEGAL_ADMIN'].includes(session.role) || !await isGlobalDocumentUser(session)) {
     return Response.json({ error: 'Unauthorized' }, { status: 403 })
   }
 

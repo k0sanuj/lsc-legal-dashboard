@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireSession } from "@/lib/auth"
 import { ENTITIES, formatDate } from "@/lib/constants"
 import { CreateAdminAccountForm } from "@/components/legal/create-admin-account-form"
@@ -36,6 +37,7 @@ export default async function AdminAccountsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   const params = await searchParams
   const entityFilter =

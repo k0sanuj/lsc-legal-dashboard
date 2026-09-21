@@ -24,6 +24,7 @@ export type FinanceEventType =
   | "share_grant.created"
   | "share_grant.updated"
   | "invoice_detected"
+  | "dispute.exposure.updated"
 
 export type FinanceEnvelope = {
   eventId: string
@@ -35,6 +36,9 @@ export type FinanceEnvelope = {
 export async function postToFinance(
   envelope: FinanceEnvelope
 ): Promise<{ ok: boolean; status: number; error?: string }> {
+  if (envelope.eventType === "dispute.exposure.updated" && process.env.FINANCE_DISPUTE_CONTRACT_VERSION !== "1") {
+    return { ok: false, status: 0, error: "Finance dispute receiver contract v1 has not been confirmed" }
+  }
   if (!FINANCE_WEBHOOK_URL || !FINANCE_WEBHOOK_KEY || !FINANCE_WEBHOOK_SECRET) {
     return { ok: false, status: 0, error: "Finance webhook env vars not set" }
   }
@@ -66,6 +70,12 @@ export async function postToFinance(
       // Finance doesn't hold up the user's request.
       signal: AbortSignal.timeout(8000),
     })
+    if (envelope.eventType === "dispute.exposure.updated" && res.ok) {
+      const receipt: unknown = await res.json().catch(() => null)
+      if (!receipt || typeof receipt !== 'object' || !('accepted' in receipt) || receipt.accepted !== true || !('eventId' in receipt) || receipt.eventId !== envelope.eventId) {
+        return { ok: false, status: res.status, error: 'Finance did not acknowledge this dispute event ID' }
+      }
+    }
     return {
       ok: res.ok,
       status: res.status,
@@ -93,7 +103,18 @@ export async function emitFinanceEvent(
   payload: Record<string, unknown>,
   ref: { entityType: string; entityId: string }
 ): Promise<{ ok: boolean; eventId: string; error?: string }> {
-  const queueRow = await prisma.crossModuleEvent.create({
+  const queueRow = await queueFinanceEvent(eventType, payload, ref)
+  return deliverFinanceEvent(queueRow.id, eventType)
+}
+
+/** Allows a matter mutation and its outbox row to commit in one transaction. */
+export async function queueFinanceEvent(
+  eventType: FinanceEventType,
+  payload: Record<string, unknown>,
+  ref: { entityType: string; entityId: string },
+  database: Prisma.TransactionClient = prisma
+) {
+  return database.crossModuleEvent.create({
     data: {
       source: "legal",
       event_type: eventType,
@@ -103,11 +124,24 @@ export async function emitFinanceEvent(
       processed: false,
     },
   })
+}
+
+/** Deliver an already durable event; the event ID is stable across retries. */
+export async function deliverFinanceEvent(eventId: string, eventType: FinanceEventType): Promise<{ ok: boolean; eventId: string; error?: string }> {
+  const queueRow = await prisma.crossModuleEvent.findUniqueOrThrow({ where: { id: eventId } })
+  if (queueRow.source !== 'legal' || queueRow.event_type !== eventType) throw new Error('Finance event type mismatch')
+  if (queueRow.processed) return { ok: true, eventId }
+  const storedPayload = (queueRow.payload ?? {}) as Record<string, unknown>
+  const previousAttempt = storedPayload._last_attempt as { count?: number } | undefined
+  const payload = { ...storedPayload }
+  delete payload._last_attempt
+  delete payload._abandoned
+  delete payload._abandoned_at
 
   const envelope: FinanceEnvelope = {
     eventId: queueRow.id,
     eventType,
-    occurredAt: new Date().toISOString(),
+    occurredAt: queueRow.created_at.toISOString(),
     payload,
   }
 
@@ -119,7 +153,7 @@ export async function emitFinanceEvent(
       processed: result.ok,
       payload: {
         ...payload,
-        _last_attempt: { count: 1, status: result.status, error: result.error ?? null },
+        _last_attempt: { count: (previousAttempt?.count ?? 0) + 1, status: result.status, error: result.error ?? null },
       } as Prisma.InputJsonValue,
     },
   })

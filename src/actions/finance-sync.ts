@@ -1,5 +1,6 @@
 "use server"
 
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { revalidatePath } from "next/cache"
 import { Prisma } from "@/generated/prisma/client"
 import { prisma } from "@/lib/prisma"
@@ -12,6 +13,7 @@ import { requireRole } from "@/lib/auth"
  */
 export async function replayFinanceEventAction(formData: FormData): Promise<void> {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   const id = String(formData.get("id") ?? "")
   if (!id) return

@@ -1,221 +1,117 @@
 'use server'
 
 // Owns AI drafting and draft saves. Authorize before returning the shared pause.
+import { createHash } from 'node:crypto'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { CONTRACT_GENERATION_PAUSED, CONTRACT_GENERATION_PAUSED_MESSAGE } from '@/lib/contract-generation'
 import { revalidatePath } from 'next/cache'
-import Anthropic from '@anthropic-ai/sdk'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { Entity, DocumentCategory, Prisma } from '@/generated/prisma/client'
+import { requireGlobalDocumentAccess } from '@/lib/document-access'
+import { requestRefinement, readGenerationJob, cancelGenerationJob, requireReviewedGeneration, requestTemplateGeneration } from '@/lib/contract-generation-queue'
+import { uploadBufferToS3 } from '@/lib/s3'
+import { recordArtifact } from '@/lib/document-artifacts'
+import { boundedText, isRecord } from '@/lib/contract-generation-protocol'
+import { saveTextTemplate } from '@/lib/template-service'
 
-const PROVIDER = (process.env.AI_PROVIDER ?? 'anthropic').toLowerCase()
-const SONNET = 'claude-sonnet-4-6'
-
-type Turn = { role: 'user' | 'assistant'; content: string }
-
-async function callGenerationAI(system: string, turns: Turn[], maxTokens = 4096): Promise<string> {
-  if (PROVIDER === 'gemini') {
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '')
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro', systemInstruction: system })
-    if (turns.length === 1) {
-      return (await model.generateContent(turns[0]!.content)).response.text()
-    }
-    const history = turns.slice(0, -1).map((t) => ({
-      role: t.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: t.content }],
-    }))
-    const chat = model.startChat({ history })
-    return (await chat.sendMessage(turns[turns.length - 1]!.content)).response.text()
-  }
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' })
-  const res = await anthropic.messages.create({
-    model: SONNET,
-    max_tokens: maxTokens,
-    temperature: 0.2,
-    system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
-    messages: turns.map((t) => ({ role: t.role, content: t.content })),
-  })
-  const block = res.content[0]
-  return block && block.type === 'text' ? block.text : ''
+function paused() {
+  return { success: false as const, draft: '', code: 'GENERATION_PAUSED' as const, error: CONTRACT_GENERATION_PAUSED_MESSAGE }
 }
 
-const ENTITY_LABELS: Record<string, string> = {
-  LSC: 'League Sports Co',
-  TBR: 'Team Blue Rising',
-  FSP: 'Future of Sports',
-  XTZ: 'XTZ Esports Tech',
-  XTE: 'XTE',
-}
-
-const SYSTEM_PROMPT = `You are a legal contract drafting assistant for League Sports Co (LSC), a UAE-based sports holding company. Generate professional, legally-structured contract drafts based on templates and variables provided. Use formal legal language appropriate for UAE jurisdiction. All monetary values are in AED unless stated otherwise. Output ONLY the contract text, no preamble or explanation.`
-
-export async function generateContract(
-  templateId: string,
-  variables: Record<string, string>,
-  entity: string,
-  reference?: string
-) {
-  await requireRole(['PLATFORM_ADMIN', 'FINANCE_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
-
-  if (CONTRACT_GENERATION_PAUSED) {
-    return {
-      success: false,
-      draft: '',
-      code: 'GENERATION_PAUSED' as const,
-      error: CONTRACT_GENERATION_PAUSED_MESSAGE,
-    }
-  }
-
-  let templateContent = ''
-  let templateName = templateId
-  const template = await prisma.contractTemplate.findUnique({
-    where: { id: templateId },
-  })
-
-  if (template) {
-    templateContent = template.content
-    templateName = template.name
-    await prisma.contractTemplate.update({
-      where: { id: templateId },
-      data: { usage_count: { increment: 1 } },
-    })
-  }
-
-  const entityLabel = ENTITY_LABELS[entity] ?? entity
-
-  const variablesList = Object.entries(variables)
-    .filter(([, v]) => v.trim())
-    .map(([key, value]) => `- ${key}: ${value}`)
-    .join('\n')
-
-  const userPrompt = `Generate a contract draft with the following parameters:
-
-Entity: ${entityLabel}
-Template: ${templateName}
-${reference ? `\nReference / Internal Note: ${reference}\n` : ''}
-${templateContent ? `\nTemplate content to follow — use this as the base structure. Replace variable placeholders with the provided values, keep all other clauses intact:\n${templateContent}\n` : ''}
-Variables:
-${variablesList || '(none provided)'}
-
-${templateContent
-    ? 'Fill in the variable fields in the template above with the provided values. Keep the rest of the template exactly as written. Output the complete contract.'
-    : `Generate a complete, professional contract draft. Include standard clauses for:
-1. Parties and recitals
-2. Scope / subject matter
-3. Term and termination
-4. Payment terms (if applicable)
-5. Confidentiality
-6. Indemnification
-7. Governing law (UAE)
-8. Dispute resolution
-9. General provisions
-10. Signature blocks`}`
-
+export async function generateContract(templateId: string, variables: Record<string, string>, entity: string, reference?: string, requestKey?: string) {
+  const actor = await requireRole(['PLATFORM_ADMIN', 'FINANCE_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+  if (CONTRACT_GENERATION_PAUSED) return paused()
+  await requireGlobalDocumentAccess(actor)
   try {
-    const draft = await callGenerationAI(SYSTEM_PROMPT, [{ role: 'user', content: userPrompt }])
-    return { success: true, draft }
+    const job = await requestTemplateGeneration(actor, templateId, variables, entity, reference, requestKey ?? crypto.randomUUID())
+    return { success: true as const, draft: '', jobId: job.id }
   } catch (error) {
-    console.error('AI generation error:', error)
-    return {
-      success: false,
-      draft: '',
-      error: 'Failed to generate contract. Please try again.',
-    }
+    return { success: false as const, draft: '', error: error instanceof Error ? error.message : 'Could not queue generation' }
   }
 }
 
-/** Chat-based refinement of an existing draft */
-export async function refineContract(
-  currentDraft: string,
-  instruction: string
-) {
-  await requireRole(['PLATFORM_ADMIN', 'FINANCE_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
-
-  if (CONTRACT_GENERATION_PAUSED) {
-    return {
-      success: false,
-      draft: '',
-      code: 'GENERATION_PAUSED' as const,
-      error: CONTRACT_GENERATION_PAUSED_MESSAGE,
-    }
-  }
-
+export async function refineContract(currentDraft: string, instruction: string, requestKey?: string, parentJobId?: string) {
+  const actor = await requireRole(['PLATFORM_ADMIN', 'FINANCE_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+  if (CONTRACT_GENERATION_PAUSED) return paused()
+  await requireGlobalDocumentAccess(actor)
   try {
-    const refined = await callGenerationAI(SYSTEM_PROMPT, [
-      { role: 'user', content: `Here is the current contract draft:\n\n${currentDraft}` },
-      { role: 'assistant', content: 'I have the contract draft. What changes would you like me to make?' },
-      {
-        role: 'user',
-        content: `Apply the following change to the contract and output the FULL updated contract text. Do not add any preamble or explanation — output only the contract.\n\nInstruction: ${instruction}`,
-      },
-    ])
-    return { success: true, draft: refined }
+    if (!boundedText(currentDraft) || !boundedText(instruction, 5000)) throw new Error('A draft and bounded refinement instruction are required')
+    if (!parentJobId) throw new Error('Select an owned generation job to refine')
+    const parent = await readGenerationJob(actor, parentJobId)
+    if (!parent || parent.output_text !== currentDraft) throw new Error('The draft does not match its job')
+    const job = await requestRefinement(actor, parentJobId, instruction, requestKey ?? crypto.randomUUID())
+    return { success: true as const, draft: '', jobId: job.id }
   } catch (error) {
-    console.error('AI refinement error:', error)
-    return {
-      success: false,
-      draft: '',
-      error: 'Failed to refine contract. Please try again.',
-    }
+    return { success: false as const, draft: '', error: error instanceof Error ? error.message : 'Could not queue refinement' }
   }
+}
+
+export async function getGenerationJob(id: string) {
+  const actor = await requireRole(['PLATFORM_ADMIN', 'FINANCE_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+  const job = await readGenerationJob(actor, id)
+  if (!job) return null
+  return { ...job, created_at: job.created_at.toISOString(), completed_at: job.completed_at?.toISOString() ?? null }
+}
+
+export async function cancelGeneration(id: string) {
+  const actor = await requireRole(['PLATFORM_ADMIN', 'FINANCE_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+  return { success: await cancelGenerationJob(actor, id) }
 }
 
 export async function saveGeneratedDocument(
-  title: string,
-  entity: string,
-  category: string,
-  content: string,
-  variables: Record<string, string>,
-  reference?: string
+  title: string, entity: string, category: string, content: string,
+  variables: Record<string, string>, reference?: string, jobId?: string
 ) {
-  const session = await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
-
-  const document = await prisma.legalDocument.create({
-    data: {
-      title,
-      entity: entity as any,
-      category: category as any,
-      lifecycle_status: 'DRAFT',
-      owner_id: session.userId,
-      notes: content,
-      parties: variables.counterparty ? [variables.counterparty] : undefined,
-      value: variables.value ? parseFloat(variables.value) : undefined,
-    },
-  })
-
-  await prisma.documentVersion.create({
-    data: {
-      document_id: document.id,
-      version_number: 1,
-      change_summary: `AI-generated draft${reference ? ` — Ref: ${reference}` : ''}`,
-      created_by: session.fullName,
-    },
-  })
-
-  revalidatePath('/legal/documents')
-  return { success: true, documentId: document.id }
+  const actor = await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+  await requireGlobalDocumentAccess(actor)
+  try {
+    if (!boundedText(title, 250) || !Object.values(Entity).includes(entity as Entity) || !Object.values(DocumentCategory).includes(category as DocumentCategory)) throw new Error('Invalid document details')
+    const job = await requireReviewedGeneration(actor, jobId, content)
+    if (job.document_id) return { success: true as const, documentId: job.document_id }
+    const source = isRecord(job.input) ? (job.kind === 'DRAFT' ? job.input : isRecord(job.input.source) ? job.input.source : null) : null
+    if (!source || !isRecord(source.variables) || !boundedText(source.templateId, 100) || !boundedText(source.template) || source.entity !== entity || source.category !== category || Object.keys(source.variables).length !== Object.keys(variables).length || Object.entries(source.variables).some(([key, value]) => variables[key] !== value)) throw new Error('Document metadata changed after drafting. Generate a new draft with those details.')
+    const amount = variables.value?.trim()
+    const currency = variables.currency?.trim().toUpperCase()
+    if (amount && (!/^-?\d+(?:\.\d{1,6})?$/.test(amount) || !currency || !/^[A-Z]{3}$/.test(currency))) throw new Error('An exact amount and explicit three-letter agreement currency are required')
+    const bytes = Buffer.from(content, 'utf8')
+    const fileUrl = await uploadBufferToS3(bytes, `generation/${actor.userId}/${job.id}/${job.output_hash}.txt`, 'text/plain; charset=utf-8')
+    const sourceBytes = Buffer.from(source.template, 'utf8')
+    const sourceHash = createHash('sha256').update(sourceBytes).digest('hex')
+    const sourceUrl = await uploadBufferToS3(sourceBytes, `templates/${source.templateId}/${sourceHash}.txt`, 'text/plain; charset=utf-8')
+    const document = await prisma.$transaction(async tx => {
+      const templateArtifact = await recordArtifact({ templateId: source.templateId as string, stage: 'template', fileUrl: sourceUrl, originalName: `${source.templateId}.txt`, mimeType: 'text/plain', bytes: sourceBytes, actorId: actor.userId, provenance: { source: 'generation-template-snapshot', jobId: job.id } }, tx)
+      const document = await tx.legalDocument.create({ data: {
+        title, entity: entity as Entity, category: category as DocumentCategory,
+        lifecycle_status: 'DRAFT', owner_id: actor.userId, notes: content, file_url: fileUrl,
+        counterparty: variables.counterparty || null,
+        parties: variables.counterparty ? [variables.counterparty] : undefined,
+        ...(amount && currency ? { value: new Prisma.Decimal(amount), currency } : {}),
+      } })
+      await tx.documentVersion.create({ data: { document_id: document.id, version_number: 1, file_url: fileUrl, change_summary: `Reviewed CLI draft${reference ? `; reference: ${reference}` : ''}`, created_by: actor.userId } })
+      await recordArtifact({ documentId: document.id, stage: 'populated', sourceArtifactId: templateArtifact.id, fileUrl, originalName: `${job.id}.txt`, mimeType: 'text/plain', bytes, actorId: actor.userId, deliverableScope: `Codex job ${job.id}` }, tx)
+      const claimed = await tx.contractGenerationJob.updateMany({ where: { id: job.id, status: 'READY', document_id: null, output_hash: job.output_hash }, data: { document_id: document.id, human_approved_by: actor.userId, approved_at: new Date() } })
+      if (claimed.count !== 1) throw new Error('This draft was already saved; refresh the job')
+      return document
+    })
+    revalidatePath('/legal/documents')
+    return { success: true as const, documentId: document.id }
+  } catch (error) {
+    return { success: false as const, error: error instanceof Error ? error.message : 'Could not save reviewed draft' }
+  }
 }
 
-/** Save the current draft as a reusable template */
 export async function saveAsTemplate(
-  name: string,
-  category: string,
-  entity: string | null,
-  content: string,
-  variables: { key: string; label: string; placeholder: string }[]
+  name: string, category: string, entity: string | null, content: string,
+  variables: { key: string; label: string; placeholder: string }[], jobId?: string
 ) {
-  await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN'])
-
-  const template = await prisma.contractTemplate.create({
-    data: {
-      name,
-      category: category as any,
-      entity: entity as any ?? undefined,
-      content,
-      variables: variables as any,
-    },
-  })
-
-  revalidatePath('/legal/templates')
-  return { success: true, templateId: template.id }
+  const actor = await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN'])
+  await requireGlobalDocumentAccess(actor)
+  try {
+    await requireReviewedGeneration(actor, jobId, content)
+    const template = await saveTextTemplate(actor, { name, category, entity, content, variables })
+    revalidatePath('/legal/templates')
+    return { success: true as const, templateId: template.templateId }
+  } catch (error) {
+    return { success: false as const, error: error instanceof Error ? error.message : 'Could not save template' }
+  }
 }

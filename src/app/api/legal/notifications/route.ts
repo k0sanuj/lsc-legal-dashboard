@@ -1,3 +1,4 @@
+import { isGlobalDocumentUser } from "@/lib/document-access"
 import { NextResponse } from 'next/server'
 import { verifySessionToken } from '@/lib/session'
 import { cookies } from 'next/headers'
@@ -17,6 +18,8 @@ export async function GET() {
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    if (!await isGlobalDocumentUser(session)) return NextResponse.json({ notifications: [], unreadCount: 0 })
 
     const notifications = await prisma.notification.findMany({
       where: { user_id: session.userId },

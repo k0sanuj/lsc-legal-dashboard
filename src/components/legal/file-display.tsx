@@ -36,7 +36,7 @@ export function FileDisplay({
 
   function handleDelete() {
     if (!onDelete) return
-    if (!window.confirm("Delete this file? This cannot be undone.")) return
+    if (!window.confirm("Remove the current attachment? Recorded versions remain in internal history.")) return
 
     startTransition(async () => {
       const result = await onDelete(documentId)

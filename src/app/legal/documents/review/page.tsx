@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireRole } from "@/lib/auth"
 import { formatRelativeDate } from "@/lib/format"
 import { ENTITIES } from "@/lib/constants"
@@ -27,6 +28,7 @@ function daysInReview(updatedAt: Date): number {
 
 export default async function ReviewQueuePage() {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   const documents = await prisma.legalDocument.findMany({
     where: { lifecycle_status: "IN_REVIEW" },

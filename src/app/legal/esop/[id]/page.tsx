@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireSession } from "@/lib/auth"
 import { formatAED, formatDate } from "@/lib/constants"
 import { cn } from "@/lib/utils"
@@ -45,6 +46,7 @@ const EVENT_STATUS_COLORS: Record<VestingEventStatus, string> = {
 
 export default async function ESOPDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requireSession()
+  await requireGlobalDocumentAccess()
   const { id } = await params
 
   const grant = await prisma.eSOPGrant.findUnique({

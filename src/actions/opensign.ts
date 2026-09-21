@@ -1,7 +1,10 @@
 "use server"
 
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { getAppBaseUrl } from "@/lib/app-url"
 import { requireRole } from "@/lib/auth"
+import { randomUUID } from "node:crypto"
+import { recordArtifact } from "@/lib/document-artifacts"
 import { prisma } from "@/lib/prisma"
 import { emitLegalTrackerEvent } from "@/lib/legal-tracker"
 import { buildAgreementSentMessage } from "@/lib/legal-tracker-payloads"
@@ -126,6 +129,7 @@ function defaultFields(lastPage: number, signerIndex: number): OpenSignFieldPlac
 
 export async function createOpenSignSignatureRequest(formData: FormData) {
   const session = await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  await requireGlobalDocumentAccess()
   const documentId = formData.get("documentId") as string
 
   if (!documentId) return { success: false, error: "Document ID required." }
@@ -136,6 +140,10 @@ export async function createOpenSignSignatureRequest(formData: FormData) {
   })
   if (!doc) return { success: false, error: "Document not found." }
   if (!doc.file_url) return { success: false, error: "Document file required before sending for signature." }
+
+  if (doc.signature_provider === "opensign_sending") return { success: false, error: "A signature send is preparing or its result is uncertain. Reconcile that request in OpenSign before sending again." }
+  if (doc.signature_completed_at || doc.signature_status === "SIGNED") return { success: false, error: "This agreement already has a completed signature request." }
+  if (doc.signature_provider_request_id && doc.signature_status !== "STALLED") return { success: false, error: "An active signature request already exists. Resolve it before sending another invitation." }
 
   const pendingSigners = doc.signature_requests.filter((sr) => sr.status === "PENDING")
   if (pendingSigners.length === 0) {
@@ -149,6 +157,8 @@ export async function createOpenSignSignatureRequest(formData: FormData) {
     return { success: false, error: "OpenSign widgets JSON is invalid." }
   }
 
+  let sendClaim: string | null = null
+  let createdProviderId: string | null = null
   try {
     const fileBytes = await fetchFileBytes(doc.file_url)
 
@@ -233,6 +243,26 @@ export async function createOpenSignSignatureRequest(formData: FormData) {
         defaultFields(lastPage, index),
     }))
 
+    const sourceArtifact = await recordArtifact({
+      documentId: doc.id,
+      stage: 'populated',
+      finalized: true,
+      fileUrl: doc.file_url,
+      originalName: `${doc.title}.pdf`,
+      mimeType: 'application/pdf',
+      bytes: Buffer.from(fileBytes),
+      actorId: session.userId,
+      signerScope: pendingSigners.map(signer => signer.signatory_email),
+    })
+
+    const token = `preparing:${randomUUID()}`
+    const claimed = await prisma.legalDocument.updateMany({ where: {
+      id: doc.id, signature_provider: doc.signature_provider,
+      signature_provider_request_id: doc.signature_provider_request_id,
+      signature_status: doc.signature_status, signature_completed_at: null, file_url: doc.file_url,
+    }, data: { signature_provider: "opensign_sending", signature_provider_request_id: token, signature_source_artifact_id: sourceArtifact.id, signature_status: "PREPARING" } })
+    if (!claimed.count) return { success: false, error: "The file or signing state changed while preparing. Refresh before sending." }
+    sendClaim = token
     const result = await createOpenSignDocument({
       title: doc.title,
       note: `Signature required: ${doc.title}`,
@@ -243,47 +273,22 @@ export async function createOpenSignSignatureRequest(formData: FormData) {
       signers: signerInputs,
     })
 
-    if (!result.providerDocumentId) {
-      return {
-        success: false,
-        error: "OpenSign did not return a document ID. Check the API response and OpenSign version.",
-      }
-    }
-
+    if (!result.providerDocumentId) throw new Error("OpenSign returned no document ID. The send result must be reconciled before retrying.")
+    createdProviderId = result.providerDocumentId
     const now = new Date()
-    const updateSigners = pendingSigners.map((signer) =>
-      prisma.signatureRequest.update({
-        where: { id: signer.id },
-        data: {
-          status: "SENT",
-          sent_at: now,
-          signing_url: result.signingLinks[signer.signatory_email.toLowerCase()] ?? null,
-        },
-      })
-    )
-
-    await prisma.$transaction([
-      prisma.legalDocument.update({
-        where: { id: documentId },
-        data: {
-          lifecycle_status: "AWAITING_SIGNATURE",
-          signature_provider: "opensign",
-          signature_provider_request_id: result.providerDocumentId,
-          signature_status: "SENT",
-          signature_sent_at: now,
-        },
-      }),
-      prisma.lifecycleEvent.create({
-        data: {
-          document_id: documentId,
-          from_status: doc.lifecycle_status,
-          to_status: "AWAITING_SIGNATURE",
-          transitioned_by: session.userId,
-          notes: "Sent for signature via OpenSign",
-        },
-      }),
-      ...updateSigners,
-    ])
+    await prisma.$transaction(async (tx) => {
+      const bound = await tx.legalDocument.updateMany({ where: { id: doc.id, signature_provider: "opensign_sending", signature_provider_request_id: token, signature_source_artifact_id: sourceArtifact.id }, data: {
+        lifecycle_status: "AWAITING_SIGNATURE", signature_provider: "opensign",
+        signature_provider_request_id: result.providerDocumentId, signature_source_artifact_id: sourceArtifact.id,
+        signature_status: "SENT", signature_sent_at: now,
+      } })
+      if (!bound.count) throw new Error(`Signing state changed. Reconcile OpenSign request ${result.providerDocumentId}; it was not bound to this document.`)
+      for (const signer of pendingSigners) {
+        const updated = await tx.signatureRequest.updateMany({ where: { id: signer.id, document_id: doc.id, status: "PENDING" }, data: { status: "SENT", sent_at: now, signing_url: result.signingLinks[signer.signatory_email.toLowerCase()] ?? null } })
+        if (!updated.count) throw new Error(`Signers changed during submission. Reconcile OpenSign request ${result.providerDocumentId}.`)
+      }
+      await tx.lifecycleEvent.create({ data: { document_id: doc.id, from_status: doc.lifecycle_status, to_status: "AWAITING_SIGNATURE", transitioned_by: session.userId, notes: `Sent for signature via OpenSign request ${result.providerDocumentId}` } })
+    })
 
     revalidatePath(`/legal/documents/${documentId}`)
     revalidatePath("/legal/signatures")
@@ -329,8 +334,12 @@ export async function createOpenSignSignatureRequest(formData: FormData) {
       signingLinks: result.signingLinks,
     }
   } catch (error) {
+    if (sendClaim) {
+      await prisma.legalDocument.updateMany({ where: { id: doc.id, signature_provider: "opensign_sending", signature_provider_request_id: sendClaim }, data: { signature_status: "SEND_UNCERTAIN" } })
+      await prisma.lifecycleEvent.create({ data: { document_id: doc.id, from_status: doc.lifecycle_status, to_status: doc.lifecycle_status, transitioned_by: session.userId, notes: `OpenSign send requires reconciliation. Claim ${sendClaim}. Provider receipt: ${createdProviderId ?? "unknown"}. ${getOpenSignErrorMessage(error)}` } })
+    }
     console.error("OpenSign create request error:", error)
-    return { success: false, error: getOpenSignErrorMessage(error) }
+    return { success: false, error: `${sendClaim ? "Send result is uncertain. Reconcile OpenSign before retrying. " : ""}${getOpenSignErrorMessage(error)}` }
   }
 }
 

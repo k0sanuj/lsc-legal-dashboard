@@ -2,7 +2,7 @@
 import Link from "next/link"
 import { prisma } from "@/lib/prisma"
 import { requireRole } from "@/lib/auth"
-import { CONTRACT_GENERATION_PAUSED, CONTRACT_GENERATION_PAUSED_MESSAGE } from "@/lib/contract-generation"
+import { generationAvailability } from "@/lib/contract-generation-queue"
 import { ENTITIES } from "@/lib/constants"
 import { Sparkles } from "lucide-react"
 import { GenerateForm } from "./generate-form"
@@ -11,7 +11,8 @@ const DEFAULT_VARIABLES = [
   { key: "counterparty", label: "Counterparty Name", placeholder: "e.g. Acme Corp" },
   { key: "effective_date", label: "Effective Date", placeholder: "e.g. 2026-04-01" },
   { key: "term_months", label: "Term (months)", placeholder: "e.g. 12" },
-  { key: "value", label: "Contract Value (AED)", placeholder: "e.g. 50000" },
+  { key: "value", label: "Contract value", placeholder: "Exact amount, if applicable" },
+  { key: "currency", label: "Agreement currency", placeholder: "Three-letter currency code" },
 ]
 
 type TemplateVariable = {
@@ -76,16 +77,17 @@ function normalizeTemplateVariables(value: unknown): TemplateVariable[] {
 }
 
 export default async function GeneratePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireRole(["PLATFORM_ADMIN", "FINANCE_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  const actor = await requireRole(["PLATFORM_ADMIN", "FINANCE_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  const availability = await generationAvailability(actor)
 
-  if (CONTRACT_GENERATION_PAUSED) {
+  if (!availability.ready) {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold tracking-tight">AI Contract Generator</h1>
         <section aria-labelledby="generation-status" className="border-t border-border py-6">
           <h2 id="generation-status" className="text-lg font-semibold">Generation paused</h2>
           <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-            {CONTRACT_GENERATION_PAUSED_MESSAGE}
+            {availability.message}
           </p>
           <div className="mt-5 flex flex-wrap gap-6 text-sm">
             <Link href="/legal/documents" className="text-primary underline underline-offset-4">
@@ -121,17 +123,6 @@ export default async function GeneratePage({ searchParams }: { searchParams: Pro
     variables: normalizeTemplateVariables(t.variables),
   }))
 
-  // If no templates in DB, provide defaults
-  if (templates.length === 0) {
-    templates.push(
-      { id: "nda-standard", name: "Standard NDA", category: "NDA", variables: DEFAULT_VARIABLES },
-      { id: "sponsorship-agreement", name: "Sponsorship Agreement", category: "SPONSORSHIP", variables: DEFAULT_VARIABLES },
-      { id: "vendor-contract", name: "Vendor Contract", category: "VENDOR", variables: DEFAULT_VARIABLES },
-      { id: "employment-offer", name: "Employment Offer Letter", category: "EMPLOYMENT", variables: DEFAULT_VARIABLES },
-      { id: "arena-host", name: "Arena Host Agreement", category: "ARENA_HOST", variables: DEFAULT_VARIABLES },
-    )
-  }
-
   const entities = ENTITIES.map((e) => ({ value: e.value, label: e.label }))
 
   return (
@@ -144,7 +135,7 @@ export default async function GeneratePage({ searchParams }: { searchParams: Pro
           <div>
             <h1 className="text-2xl font-bold tracking-tight">AI Contract Generator</h1>
             <p className="text-sm text-muted-foreground">
-              Generate contract drafts from templates using AI
+              Generate a reviewed draft from an approved template
             </p>
           </div>
         </div>

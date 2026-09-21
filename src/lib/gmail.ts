@@ -1,4 +1,5 @@
-import { google } from 'googleapis'
+import { gmail_v1 } from 'googleapis/build/src/apis/gmail/v1'
+import { JWT } from 'google-auth-library'
 
 const GMAIL_READONLY_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'
 const DEFAULT_WATCH_MAILBOXES = [
@@ -58,7 +59,7 @@ function assertWatchedMailbox(mailbox: string): string {
 
 function getAuth(mailbox: string) {
   const credentials = getServiceAccountCredentials()
-  return new google.auth.JWT({
+  return new JWT({
     email: credentials.client_email,
     key: credentials.private_key,
     scopes: [GMAIL_READONLY_SCOPE],
@@ -67,7 +68,7 @@ function getAuth(mailbox: string) {
 }
 
 function getGmailClient(mailbox: string) {
-  return google.gmail({ version: 'v1', auth: getAuth(mailbox) })
+  return new gmail_v1.Gmail({ auth: getAuth(mailbox) })
 }
 
 export function decodeGmailPubSubData(data: string): GmailPubSubData {

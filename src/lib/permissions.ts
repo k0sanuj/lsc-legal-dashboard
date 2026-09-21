@@ -26,6 +26,13 @@ const LEGAL_WRITE_ROLES: UserRole[] = [
 
 export const PAGE_PERMISSIONS: Record<string, UserRole[]> = {
   "/legal": ALL_ROLES,
+  "/legal/access": ALL_ROLES,
+  "/legal/currencies": ADMIN_ROLES,
+  "/legal/backups": ALL_ROLES,
+  "/legal/repositories": ALL_ROLES,
+  "/legal/compliance/entities": ADMIN_ROLES,
+  "/legal/compliance/reviews": ADMIN_ROLES,
+  "/legal/arbitration": ADMIN_ROLES,
   "/legal/documents": ALL_ROLES,
   "/legal/documents/[id]": ALL_ROLES,
   "/legal/signatures": ADMIN_ROLES,
@@ -84,8 +91,9 @@ export function canAccessPage(role: UserRole, path: string): boolean {
   return allowedRoles.includes(role)
 }
 
-export function getNavigationItems(role: UserRole) {
+export function getNavigationItems(role: UserRole, globalAccess = false) {
   return NAV_ITEMS.filter((item) => {
+    if (!globalAccess && !["/legal/documents", "/legal/access", "/legal/backups"].includes(item.href)) return false
     const allowedRoles = PAGE_PERMISSIONS[item.href]
     return allowedRoles?.includes(role)
   })
@@ -112,7 +120,13 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "AI Generator", href: "/legal/generate", icon: "Sparkles", group: "Agreements" },
   { label: "Clickwrap", href: "/legal/clickwrap", icon: "MousePointerClick", group: "Agreements" },
 
+  { label: "Repositories", href: "/legal/repositories", icon: "FileText", group: "Agreements" },
+  { label: "Backups", href: "/legal/backups", icon: "FileText", group: "Agreements" },
+  { label: "Document Access", href: "/legal/access", icon: "Lock", group: "Agreements" },
+
   // Compliance & Risk
+  { label: "Entities", href: "/legal/compliance/entities", icon: "Building", group: "Compliance" },
+  { label: "Review Schedules", href: "/legal/compliance/reviews", icon: "Clock", group: "Compliance" },
   { label: "Compliance", href: "/legal/compliance", icon: "ShieldCheck", group: "Compliance" },
   { label: "Data Protection", href: "/legal/compliance/data-protection", icon: "Lock", group: "Compliance" },
   { label: "Registered Offices", href: "/legal/compliance/registered-offices", icon: "Building", group: "Compliance" },
@@ -122,7 +136,7 @@ export const NAV_ITEMS: NavItem[] = [
 
   // Legal Operations
   { label: "Litigation", href: "/legal/litigation", icon: "Gavel", group: "Legal Ops" },
-  { label: "KYC", href: "/legal/kyc", icon: "UserCheck", group: "Legal Ops" },
+  { label: "Arbitration", href: "/legal/arbitration", icon: "Gavel", group: "Legal Ops" },
   { label: "Admin Accounts", href: "/legal/admin-accounts", icon: "KeyRound", group: "Legal Ops" },
   { label: "Subsidies", href: "/legal/subsidies", icon: "Landmark", group: "Legal Ops" },
   { label: "Email Intel", href: "/legal/email-intelligence", icon: "Inbox", group: "Legal Ops" },
@@ -132,11 +146,12 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Cap Table", href: "/legal/esop", icon: "TrendingUp", group: "Finance" },
 
   // Integrations
+  { label: "Currencies", href: "/legal/currencies", icon: "CreditCard", group: "Finance" },
   { label: "Finance Sync", href: "/legal/finance-sync", icon: "Webhook", group: "Integrations" },
   { label: "Ops Monitor", href: "/legal/ops-monitor", icon: "Activity", group: "Integrations" },
 
   // Operations
-  { label: "Policies", href: "/legal/policies", icon: "BookOpen", group: "Operations" },
+  { label: "Policies & Procedures", href: "/legal/policies", icon: "BookOpen", group: "Operations" },
   { label: "Issues", href: "/legal/issues", icon: "AlertCircle", group: "Operations" },
   { label: "Tracker", href: "/legal/tracker", icon: "ListChecks", group: "Operations" },
 

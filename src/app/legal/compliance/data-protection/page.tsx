@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireSession } from "@/lib/auth"
 import { formatDate } from "@/lib/constants"
 import { ENTITIES } from "@/lib/constants"
@@ -55,6 +56,7 @@ function healthScoreBadge(score: number | null) {
 
 export default async function DataProtectionPage() {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   const records = await prisma.dataProtectionRecord.findMany({
     orderBy: [{ entity: "asc" }, { jurisdiction: "asc" }],

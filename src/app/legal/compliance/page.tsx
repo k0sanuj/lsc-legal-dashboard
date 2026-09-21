@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireSession } from "@/lib/auth"
 import { formatDate, daysUntil, ENTITIES } from "@/lib/constants"
 import { cn } from "@/lib/utils"
@@ -54,6 +55,7 @@ export default async function CompliancePage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   const params = await searchParams
   const entityFilter = typeof params.entity === "string" ? params.entity : ""

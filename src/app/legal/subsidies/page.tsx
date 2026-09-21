@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireSession } from "@/lib/auth"
 import { ENTITIES, formatAED, formatDate } from "@/lib/constants"
 import { CreateSubsidyForm } from "@/components/legal/create-subsidy-form"
@@ -44,6 +45,7 @@ export default async function SubsidiesPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   const params = await searchParams
   const entityFilter =

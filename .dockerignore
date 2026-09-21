@@ -1,0 +1,9 @@
+.git
+node_modules
+.next
+.env
+.env.*
+.vercel
+*.log
+*.tsbuildinfo
+docs/v2/mocks

@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma"
 import { requireSession } from "@/lib/auth"
+import { documentScope } from "@/lib/document-access"
+import { agreementMoney } from "@/lib/money"
+import { loadUsdRates } from "@/lib/fx-rates"
 import { LIFECYCLE_STATUS_LABELS, ENTITIES } from "@/lib/constants"
-import { formatAED, formatDate, daysUntil } from "@/lib/format"
+import { formatDate, daysUntil } from "@/lib/format"
 import { LifecycleBadge } from "@/components/legal/lifecycle-badge"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -29,6 +32,7 @@ function getDocuments(where: Prisma.LegalDocumentWhereInput) {
       lifecycle_status: true,
       entity: true,
       value: true,
+      currency: true,
       expiry_date: true,
       updated_at: true,
       file_url: true,
@@ -41,14 +45,15 @@ export default async function DocumentsListPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  await requireSession()
+  const session = await requireSession()
+  const rates = await loadUsdRates()
 
   const params = await searchParams
   const search = typeof params.search === "string" ? params.search : ""
   const statusFilter = typeof params.status === "string" ? params.status : ""
   const entityFilter = typeof params.entity === "string" ? params.entity : ""
 
-  const where: Prisma.LegalDocumentWhereInput = {}
+  const where: Prisma.LegalDocumentWhereInput = { AND: [await documentScope(session)] }
 
   if (search) {
     where.title = { contains: search, mode: "insensitive" }
@@ -166,7 +171,7 @@ export default async function DocumentsListPage({
                     </Link>
                     {doc.file_url && (
                       <a
-                        href={doc.file_url}
+                        href={`/api/documents/${doc.id}/file`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="ml-1 text-muted-foreground hover:text-primary"
@@ -188,7 +193,7 @@ export default async function DocumentsListPage({
                     <Badge variant="outline">{doc.entity}</Badge>
                   </TableCell>
                   <TableCell className="font-figures">
-                    {doc.value ? formatAED(doc.value.toNumber()) : "--"}
+                    {agreementMoney(doc.value, doc.currency, rates)}
                   </TableCell>
                   <TableCell>
                     {doc.expiry_date ? (

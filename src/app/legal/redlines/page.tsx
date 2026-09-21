@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { FileDiff, GitCompare, ListChecks, CheckCircle2 } from "lucide-react"
 import { prisma } from "@/lib/prisma"
 import { requireRole } from "@/lib/auth"
@@ -82,6 +83,7 @@ export default async function RedlinesPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   const params = await searchParams
   const rawStatus = typeof params.status === "string" ? params.status : ""

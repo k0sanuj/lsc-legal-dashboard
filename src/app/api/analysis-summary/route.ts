@@ -1,3 +1,4 @@
+import { requireDocumentAccess, isGlobalDocumentUser, DocumentAccessDenied } from "@/lib/document-access"
 import { NextRequest, NextResponse } from "next/server"
 import { requireSession } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -5,7 +6,7 @@ import { getLatestUploadAnalysisSummary } from "@/lib/document-analysis-summary"
 
 export async function GET(request: NextRequest) {
   try {
-    await requireSession()
+    const session = await requireSession()
 
     const searchParams = request.nextUrl.searchParams
     const target = searchParams.get("target") ?? "document"
@@ -15,7 +16,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Missing id" }, { status: 400 })
     }
 
+    if (target !== "document" && !await isGlobalDocumentUser(session)) throw new DocumentAccessDenied()
     if (target === "document") {
+      await requireDocumentAccess(session, id)
       const document = await prisma.legalDocument.findUnique({
         where: { id },
         select: {
@@ -94,6 +97,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ error: "Invalid analysis target" }, { status: 400 })
   } catch (error) {
+    if (error instanceof DocumentAccessDenied) return NextResponse.json({ error: "Document not found" }, { status: 404 })
     console.error("Failed to load upload analysis summary:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }

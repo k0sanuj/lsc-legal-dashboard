@@ -155,7 +155,7 @@ export function NewAgreementForm() {
           {/* Financial Impact */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Value (AED)</label>
+              <label className="text-sm font-medium">Agreement value</label>
               <Input
                 name="value"
                 type="number"
@@ -169,6 +169,8 @@ export function NewAgreementForm() {
               <Input name="expiry_date" type="date" />
             </div>
           </div>
+
+          <div className="space-y-2"><label className="text-sm font-medium" htmlFor="agreement-currency">Agreement currency</label><Input id="agreement-currency" name="currency" defaultValue="USD" pattern="[A-Z]{3}" required maxLength={3}/></div>
 
           {/* Notes */}
           <div className="space-y-2">

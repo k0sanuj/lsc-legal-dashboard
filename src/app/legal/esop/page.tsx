@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireSession } from "@/lib/auth"
 import { formatAED, formatDate } from "@/lib/constants"
 import { ENTITIES } from "@/lib/constants"
@@ -43,6 +44,7 @@ const VESTING_COLORS: Record<VestingType, string> = {
 
 export default async function ESOPPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   const params = await searchParams
   const entityFilter = typeof params.entity === 'string' ? params.entity : undefined

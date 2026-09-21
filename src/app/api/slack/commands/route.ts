@@ -4,10 +4,11 @@ import {
   openSlackModal,
   resolveSlackActor,
   verifySlackSignature,
+  slackSession,
+  type SlackActor,
 } from "@/lib/slack"
 import {
   buildAgreementLookupBlocks,
-  buildLegalHelpBlocks,
   buildLegalStatusBlocks,
   buildMndaModalView,
   buildSignaturesBlocks,
@@ -15,21 +16,27 @@ import {
 } from "@/lib/slack-blocks"
 import { agreementLookup, legalStatusSummary, signaturesInFlight } from "@/lib/slack-legal-queries"
 
+import { createHash } from "node:crypto"
+import { prisma } from "@/lib/prisma"
+import { Prisma } from "@/generated/prisma/client"
+import { executeSlackOperation } from "@/lib/slack-operations"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
+
 export const runtime = "nodejs"
 
 /**
- * Slack slash commands: /legal (read) and /mnda (write).
+ * Slack commands share dashboard services and current document entitlements.
  *
  * There is no user session here. Every request is authenticated with the Slack
  * signing secret over the RAW body, then authorised against the
- * SLACK_LEGAL_ADMINS allowlist via resolveSlackActor.
+ * current Slack profile email and active AppUser via resolveSlackActor.
  *
  * ACK-FIRST, measured, not theoretical: Slack's slash-command deadline is 3
  * seconds, and a cold start of this function was measured at 4.7s end to end
  * (US-East function, Singapore database), which surfaced to the caller as
  * operation_timeout. So the response path now does ONLY signature
  * verification, which needs no I/O, and acknowledges immediately. Everything
- * that touches the database or the Slack Web API, the allowlist lookup
+ * that touches the database or the Slack Web API, the identity lookup
  * included, runs inside after() and delivers its result through the
  * response_url, which stays valid for 30 minutes.
  */
@@ -41,6 +48,7 @@ interface SlashContext {
   channelId: string
   triggerId: string
   responseUrl: string
+  requestKey: string
 }
 
 /** Immediate ephemeral ack; only the caller sees it. */
@@ -56,10 +64,12 @@ async function respondVia(
   responseUrl: string,
   text: string,
   blocks?: SlackBlock[]
-): Promise<void> {
+): Promise<boolean> {
+  const target = new URL(responseUrl)
+  if (target.protocol !== "https:" || !["hooks.slack.com", "hooks.slack-gov.com"].includes(target.hostname)) throw new Error("Invalid Slack response URL")
   if (!responseUrl) {
-    console.error("[slack] no response_url to deliver:", text)
-    return
+    console.error("[slack] no response_url to deliver")
+    return false
   }
   try {
     const res = await fetch(responseUrl, {
@@ -71,13 +81,15 @@ async function respondVia(
         text,
         ...(blocks ? { blocks } : {}),
       }),
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(8000), redirect: "error",
     })
     if (!res.ok) {
       console.error(`[slack] response_url delivery failed: HTTP ${res.status}`)
     }
-  } catch (error) {
-    console.error("[slack] response_url delivery failed:", error)
+    return res.ok
+  } catch {
+    console.error("[slack] response_url delivery failed")
+    return false
   }
 }
 
@@ -87,45 +99,44 @@ function todayInDubai(): string {
 }
 
 /** The deferred work behind /legal. Runs in after(). */
-async function deliverLegalAnswer(ctx: SlashContext): Promise<void> {
+async function deliverLegalAnswer(ctx: SlashContext, actor: SlackActor): Promise<boolean> {
+  const session = slackSession(actor)
   const [subcommand = "", ...rest] = ctx.text.trim().split(/\s+/)
 
   switch (subcommand.toLowerCase()) {
     case "":
     case "status": {
-      const summary = await legalStatusSummary()
-      await respondVia(ctx.responseUrl, "Legal status", buildLegalStatusBlocks(summary))
-      return
+      const summary = await legalStatusSummary(session)
+      return respondVia(ctx.responseUrl, "Legal status", buildLegalStatusBlocks(summary))
     }
     case "signatures": {
-      const inFlight = await signaturesInFlight()
-      await respondVia(ctx.responseUrl, "Signatures in flight", buildSignaturesBlocks(inFlight))
-      return
+      const inFlight = await signaturesInFlight(session)
+      return respondVia(ctx.responseUrl, "Signatures in flight", buildSignaturesBlocks(inFlight))
     }
     case "find": {
       const query = rest.join(" ").trim()
       if (!query) {
-        await respondVia(ctx.responseUrl, "Usage: /legal find <title or counterparty>")
-        return
+        return respondVia(ctx.responseUrl, "Usage: /legal find <title or counterparty>")
       }
-      const hits = await agreementLookup(query)
-      await respondVia(
+      const hits = await agreementLookup(session, query)
+      return respondVia(
         ctx.responseUrl,
         `Agreements matching "${query}"`,
         buildAgreementLookupBlocks(query, hits)
       )
-      return
     }
     default:
-      await respondVia(ctx.responseUrl, "/legal help", buildLegalHelpBlocks())
+      return respondVia(ctx.responseUrl, await executeSlackOperation(session, subcommand.toLowerCase(), ctx.text.trim().slice(subcommand.length).trim(), ctx.requestKey))
   }
 }
 
 /** The deferred work behind /mnda: authorise, then open the modal. */
 async function deliverMndaModal(
   ctx: SlashContext,
-  actor: { userId: string; email: string; display: string }
+  actor: SlackActor
 ): Promise<void> {
+  const session = await requireGlobalDocumentAccess(slackSession(actor))
+  if (!["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"].includes(session.role)) throw new Error("MNDA editing access is required")
   const view = buildMndaModalView({
     todayDubai: todayInDubai(),
     privateMetadata: JSON.stringify({
@@ -167,6 +178,7 @@ export async function POST(request: NextRequest) {
     channelId: params.get("channel_id") ?? "",
     triggerId: params.get("trigger_id") ?? "",
     responseUrl: params.get("response_url") ?? "",
+    requestKey: createHash("sha256").update(rawBody).digest("hex"),
   }
 
   if (ctx.command !== "/legal" && ctx.command !== "/mnda") {
@@ -183,15 +195,26 @@ export async function POST(request: NextRequest) {
         return
       }
       if (ctx.command === "/legal") {
-        await deliverLegalAnswer(ctx)
+        const receipt = await prisma.webhookEventLog.create({ data: { provider: 'slack', event_hash: `slack-command-${ctx.requestKey}`, event_type: ctx.text.trim().split(/\s+/)[0] || 'status', processing_status: 'processing', raw_payload: { actorId: actor.userId, slackUserId: ctx.slackUserId } } }).catch(error => {
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return null
+          throw error
+        })
+        if (!receipt) { await respondVia(ctx.responseUrl, 'This request was already received. Check its result before retrying.'); return }
+        try {
+          const delivered = await deliverLegalAnswer(ctx, actor)
+          await prisma.webhookEventLog.update({ where: { id: receipt.id }, data: { processing_status: 'processed', processed_at: new Date(), raw_payload: { actorId: actor.userId, slackUserId: ctx.slackUserId, responseDelivered: delivered } } })
+        } catch (error) {
+          await prisma.webhookEventLog.update({ where: { id: receipt.id }, data: { processing_status: 'failed', error: 'Command failed or access denied', processed_at: new Date() } })
+          throw error
+        }
       } else {
         await deliverMndaModal(ctx, actor)
       }
     } catch (error) {
-      console.error("[slack] deferred command handling failed:", error)
+      console.error("[slack] deferred command handling failed:", error instanceof Error ? error.name : "UnknownError")
       await respondVia(
         ctx.responseUrl,
-        "Something went wrong handling that command. The details are in the dashboard logs."
+        "The command could not complete. Check your access, command syntax, and integration readiness in the dashboard. No success receipt was recorded."
       )
     }
   })

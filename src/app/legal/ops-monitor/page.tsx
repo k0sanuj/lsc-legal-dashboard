@@ -1,4 +1,5 @@
 import { requireRole } from "@/lib/auth"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { prisma } from "@/lib/prisma"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -39,6 +40,7 @@ function statusClass(status: string) {
 
 export default async function OpsMonitorPage() {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   const [webhooks, agentFailures, financeFailures, signatureDocs, pendingMessages, missingAnalysisDocs] =
     await Promise.all([

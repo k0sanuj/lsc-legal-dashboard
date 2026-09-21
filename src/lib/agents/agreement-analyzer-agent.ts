@@ -1,4 +1,3 @@
-import { prisma } from '@/lib/prisma'
 import { BaseAgent } from './base-agent'
 import { LSC_LEGAL_CONTEXT } from './shared-context'
 import type { AgentResult } from './types'
@@ -153,27 +152,9 @@ export class AgreementAnalyzerAgent extends BaseAgent {
 
     // ── 3. Generate standardized file name ───────────────────────────────────
 
-    const entity = parsed.entity ?? 'LSC'
-    const category = parsed.suggestedCategory ?? 'OTHER'
-    const counterparty = (parsed.counterparty ?? 'UNKNOWN')
-      .replace(/[^a-zA-Z0-9]/g, '_')
-      .toUpperCase()
-      .slice(0, 30)
-    const dateStr = new Date().toISOString().split('T')[0]!.replace(/-/g, '')
-    const ext = 'pdf' // default extension; real implementation would detect from file
-
-    const suggestedFileName = `${entity}_${category}_${counterparty}_${dateStr}_v1.${ext}`
-
-    // ── 4. Log the file naming suggestion ────────────────────────────────────
-
-    await prisma.fileNamingLog.create({
-      data: {
-        original_name: referenceId,
-        renamed_to: suggestedFileName,
-        entity: isValidEntity(entity) ? (entity as any) : null,
-        category,
-      },
-    })
+    // Naming requires an approved category lexicon, actual extension, naming
+    // date and owner initials. Analysis cannot infer those authorizations.
+    const suggestedFileName = ''
 
     // ── 5. Return analysis ───────────────────────────────────────────────────
 
@@ -216,10 +197,4 @@ export class AgreementAnalyzerAgent extends BaseAgent {
       data: analysis,
     }
   }
-}
-
-/** Validate entity string against the Entity enum values */
-function isValidEntity(value: string): boolean {
-  const validEntities = ['LSC', 'TBR', 'FSP', 'XTZ', 'XTE']
-  return validEntities.includes(value)
 }

@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { prisma } from "@/lib/prisma"
 import { requireSession } from "@/lib/auth"
 import { ENTITIES } from "@/lib/constants"
@@ -53,6 +54,7 @@ export default async function TemplatesPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const session = await requireSession()
+  await requireGlobalDocumentAccess()
   const isAdmin = (ADMIN_ROLES as readonly string[]).includes(session.role)
 
   const params = await searchParams

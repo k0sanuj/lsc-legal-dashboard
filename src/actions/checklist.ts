@@ -1,5 +1,6 @@
 "use server"
 
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { prisma } from "@/lib/prisma"
 import { requireSession } from "@/lib/auth"
 import { revalidatePath } from "next/cache"
@@ -7,6 +8,7 @@ import type { Priority } from "@/generated/prisma/client"
 
 export async function getChecklistItems() {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   return prisma.projectChecklist.findMany({
     orderBy: [
@@ -20,6 +22,7 @@ export async function getChecklistItems() {
 
 export async function createChecklistItem(formData: FormData) {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   const title = formData.get("title") as string
   const priority = (formData.get("priority") as Priority) || "MEDIUM"
@@ -47,6 +50,7 @@ export async function createChecklistItem(formData: FormData) {
 
 export async function toggleChecklistItem(id: string) {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   const item = await prisma.projectChecklist.findUnique({ where: { id } })
   if (!item) throw new Error("Item not found")
@@ -61,6 +65,7 @@ export async function toggleChecklistItem(id: string) {
 
 export async function deleteChecklistItem(id: string) {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   await prisma.projectChecklist.delete({ where: { id } })
 
@@ -72,6 +77,7 @@ export async function updateChecklistItem(
   data: { title?: string; priority?: Priority; category?: string; notes?: string }
 ) {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   await prisma.projectChecklist.update({
     where: { id },

@@ -1,5 +1,6 @@
 'use server'
 
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
@@ -7,6 +8,7 @@ import type { Entity } from '@/generated/prisma/client'
 
 export async function createClickwrapAcceptance(formData: FormData) {
   await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+  await requireGlobalDocumentAccess()
 
   await prisma.clickwrapAcceptance.create({
     data: {

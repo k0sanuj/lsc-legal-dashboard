@@ -91,14 +91,15 @@ interface ChecklistItem {
 interface LegalSidebarProps {
   userRole: UserRole
   userName: string
+  globalAccess: boolean
   checklistItems: ChecklistItem[]
 }
 
-export function LegalSidebar({ userRole, userName, checklistItems }: LegalSidebarProps) {
+export function LegalSidebar({ userRole, userName, checklistItems, globalAccess }: LegalSidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
 
-  const navItems = getNavigationItems(userRole)
+  const navItems = getNavigationItems(userRole, globalAccess)
 
   // Group items
   const groups = navItems.reduce<Record<string, typeof navItems>>(
@@ -112,9 +113,10 @@ export function LegalSidebar({ userRole, userName, checklistItems }: LegalSideba
 
   return (
     <aside
+      data-collapsed={collapsed}
       className={cn(
-        "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-sidebar-border bg-sidebar transition-all duration-200",
-        collapsed ? "w-16" : "w-64"
+        "peer fixed inset-y-0 left-0 z-40 flex flex-col border-r border-sidebar-border bg-sidebar transition-all duration-200",
+        collapsed ? "w-16" : "w-16 lg:w-64"
       )}
     >
       {/* Brand */}
@@ -123,7 +125,7 @@ export function LegalSidebar({ userRole, userName, checklistItems }: LegalSideba
           <Scale className="h-5 w-5 text-primary" />
         </div>
         {!collapsed && (
-          <div className="min-w-0">
+          <div className="hidden lg:block min-w-0">
             <p className="text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground">
               League Sports Co
             </p>
@@ -137,7 +139,7 @@ export function LegalSidebar({ userRole, userName, checklistItems }: LegalSideba
         {Object.entries(groups).map(([group, items]) => (
           <div key={group}>
             {!collapsed && (
-              <p className="mb-2 px-2 text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground">
+              <p className="hidden lg:block mb-2 px-2 text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground">
                 {group}
               </p>
             )}
@@ -159,10 +161,11 @@ export function LegalSidebar({ userRole, userName, checklistItems }: LegalSideba
                         ? "bg-sidebar-accent text-sidebar-primary font-medium border-l-2 border-sidebar-primary -ml-px"
                         : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                     )}
-                    title={collapsed ? item.label : undefined}
+                    title={item.label}
+                    aria-label={item.label}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
-                    {!collapsed && <span className="truncate">{item.label}</span>}
+                    {!collapsed && <span className="hidden lg:inline truncate">{item.label}</span>}
                   </Link>
                 )
               })}
@@ -172,13 +175,13 @@ export function LegalSidebar({ userRole, userName, checklistItems }: LegalSideba
       </nav>
 
       {/* Project Checklist */}
-      <SidebarChecklist items={checklistItems} collapsed={collapsed} />
+      {globalAccess && <div className="hidden lg:block"><SidebarChecklist items={checklistItems} collapsed={collapsed} /></div>}
 
       {/* Footer */}
       <div className="border-t border-sidebar-border p-3 space-y-2">
         {!collapsed && (
-          <div className="flex items-center gap-2 px-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+          <div className="hidden lg:flex items-center gap-2 px-2">
+            <div className="hidden lg:flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
               {userName
                 .split(" ")
                 .map((n) => n[0])
@@ -186,7 +189,7 @@ export function LegalSidebar({ userRole, userName, checklistItems }: LegalSideba
                 .toUpperCase()
                 .slice(0, 2)}
             </div>
-            <div className="min-w-0">
+            <div className="hidden lg:block min-w-0">
               <p className="text-xs font-medium truncate">{userName}</p>
               <p className="text-[10px] text-muted-foreground capitalize">
                 {userRole.toLowerCase().replace(/_/g, " ")}
@@ -199,19 +202,21 @@ export function LegalSidebar({ userRole, userName, checklistItems }: LegalSideba
           <form action="/api/auth/logout" method="POST" className="flex-1">
             <button
               type="submit"
+              aria-label="Sign out"
               className={cn(
                 "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground transition-colors",
                 collapsed && "justify-center"
               )}
             >
               <LogOut className="h-3.5 w-3.5" />
-              {!collapsed && <span>Sign Out</span>}
+              {!collapsed && <span className="hidden lg:inline">Sign Out</span>}
             </button>
           </form>
 
           <button
+            aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
             onClick={() => setCollapsed(!collapsed)}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground transition-colors"
+            className="hidden lg:flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground transition-colors"
           >
             {collapsed ? (
               <ChevronRight className="h-3.5 w-3.5" />

@@ -1,3 +1,4 @@
+import { requireDocumentAccess, isGlobalDocumentUser } from "@/lib/document-access"
 import { notFound } from "next/navigation"
 import { prisma } from "@/lib/prisma"
 import { requireSession } from "@/lib/auth"
@@ -5,7 +6,10 @@ import {
   ENTITIES,
 } from "@/lib/constants"
 import { getOpenSignSetupStatus } from "@/lib/opensign"
-import { formatAED, formatDate, formatRelativeDate } from "@/lib/format"
+import { formatDate, formatRelativeDate } from "@/lib/format"
+import { agreementMoney } from "@/lib/money"
+import { loadUsdRates } from "@/lib/fx-rates"
+import { updateNativeAmount } from "@/actions/repositories"
 import { LifecycleBadge } from "@/components/legal/lifecycle-badge"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -67,12 +71,14 @@ export default async function DocumentDetailPage({
   // This page is ALL_ROLES, but /legal/redlines is restricted to the legal write
   // roles. Negotiation posture (rounds in flight, counterparty, open items) must
   // not leak to an external auditor or a team member through the tab here.
-  const canSeeRedlines =
+  const globalAccess = await isGlobalDocumentUser(session)
+  const canSeeRedlines = globalAccess && (
     session.role === "PLATFORM_ADMIN" ||
     session.role === "LEGAL_ADMIN" ||
-    session.role === "OPS_ADMIN"
+    session.role === "OPS_ADMIN")
 
   const { id } = await params
+  try { await requireDocumentAccess(session, id) } catch { notFound() }
   const query = await searchParams
   const openAnalysis = query.analysis === "open"
 
@@ -123,6 +129,8 @@ export default async function DocumentDetailPage({
     notFound()
   }
 
+  const rates = await loadUsdRates()
+
   const entityLabel =
     ENTITIES.find((e) => e.value === document.entity)?.label ?? document.entity
 
@@ -147,15 +155,15 @@ export default async function DocumentDetailPage({
           </div>
           <div className="flex items-center gap-3 pt-1">
             <FileDisplay
-              fileUrl={document.file_url}
+              fileUrl={document.file_url ? `/api/documents/${document.id}/file` : null}
               documentId={document.id}
-              onDelete={deleteDocumentFile}
+              onDelete={globalAccess ? deleteDocumentFile : undefined}
             />
             <DocumentAnalysisSummaryDrawer
               documentId={document.id}
               autoOpen={openAnalysis}
             />
-            {!document.file_url && (
+            {globalAccess && !document.file_url && (
               <FileUpload
                 action={uploadDocumentFile}
                 entityId={document.id}
@@ -168,15 +176,16 @@ export default async function DocumentDetailPage({
           </div>
         </div>
         <div className="text-right space-y-2">
-          {document.value && (
+          {document.value !== null && (
             <p className="text-2xl font-bold font-figures">
-              {formatAED(document.value.toNumber())}
+              {agreementMoney(document.value, document.currency, rates)}
             </p>
           )}
+          {globalAccess && <details className="text-sm"><summary className="cursor-pointer text-primary">Agreement amount</summary><form action={updateNativeAmount} className="mt-2 flex flex-wrap gap-2"><input type="hidden" name="documentId" value={document.id}/><input name="value" aria-label="Native agreement amount" defaultValue={document.value?.toString() ?? ""} inputMode="decimal" className="w-36 border border-input bg-background px-2 py-1"/><input name="currency" aria-label="Agreement currency" defaultValue={document.currency} pattern="[A-Z]{3}" required className="w-20 border border-input bg-background px-2 py-1"/><button className="border border-border px-2 py-1">Save native amount</button></form></details>}
           <p className="text-xs text-muted-foreground">
             Owner: {document.owner.full_name}
           </p>
-          {pendingSignatureCount > 0 && (
+          {globalAccess && pendingSignatureCount > 0 && (
             <SendForSignatureButton
               documentId={document.id}
               pendingCount={pendingSignatureCount}
@@ -225,9 +234,7 @@ export default async function DocumentDetailPage({
                 <div>
                   <dt className="text-xs text-muted-foreground">Value</dt>
                   <dd className="mt-1 text-sm font-medium font-figures">
-                    {document.value
-                      ? formatAED(document.value.toNumber())
-                      : "--"}
+                    {agreementMoney(document.value, document.currency, rates)}
                   </dd>
                 </div>
                 <div>
@@ -332,7 +339,7 @@ export default async function DocumentDetailPage({
                       <TableRow key={v.id}>
                         <TableCell className="font-figures font-medium">
                           {v.file_url ? (
-                            <a href={v.file_url} target="_blank" rel="noopener noreferrer" className="hover:underline text-primary" title={`Download v${v.version_number}`}>
+                            <a href={`/api/document-versions/${v.id}/file`} target="_blank" rel="noopener noreferrer" className="hover:underline text-primary" title={`Download v${v.version_number}`}>
                               v{v.version_number}
                             </a>
                           ) : (
@@ -358,12 +365,12 @@ export default async function DocumentDetailPage({
         {/* Signatures Tab */}
         <TabsContent value={2}>
           <div className="mt-4 space-y-4">
-            <SignaturePrepPanel
+            {globalAccess && <SignaturePrepPanel
               documentId={document.id}
               hasFile={Boolean(document.file_url)}
               signers={document.signature_requests}
               openSignStatus={openSignStatus}
-            />
+            />}
             {document.signature_requests.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card py-12">
                 <FileText className="h-8 w-8 text-muted-foreground/50 mb-2" />
@@ -392,7 +399,7 @@ export default async function DocumentDetailPage({
                           Sent {formatDate(sig.sent_at)}
                         </span>
                       )}
-                      {sig.signing_url && (
+                      {globalAccess && sig.signing_url && (
                         <a
                           href={sig.signing_url}
                           target="_blank"
@@ -474,6 +481,7 @@ export default async function DocumentDetailPage({
         <TabsContent value={5}>
           <DocumentFinancePanel
             documentId={document.id}
+            canManage={globalAccess}
             syncStatus={document.finance_post_status}
             lastPostedAt={
               document.last_finance_post_at
@@ -484,7 +492,7 @@ export default async function DocumentDetailPage({
             contract={{
               contract_name: document.contract_name ?? document.title,
               contract_value_usd: document.contract_value_usd
-                ? Number(document.contract_value_usd)
+                ? document.contract_value_usd.toString()
                 : null,
               contract_status: document.contract_status,
               sponsor_name: document.sponsor_name ?? document.counterparty,
@@ -503,7 +511,7 @@ export default async function DocumentDetailPage({
               tranche_number: t.tranche_number,
               tranche_label: t.tranche_label,
               tranche_amount_usd: t.tranche_amount_usd
-                ? Number(t.tranche_amount_usd)
+                ? t.tranche_amount_usd.toString()
                 : null,
               finance_post_status: t.finance_post_status,
             }))}

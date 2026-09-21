@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { notFound } from "next/navigation"
 import { ArrowLeft, ArrowRight, History } from "lucide-react"
 import { prisma } from "@/lib/prisma"
@@ -40,6 +41,7 @@ export default async function RedlineEditorPage({
   params: Promise<{ id: string }>
 }) {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   const { id } = await params
 

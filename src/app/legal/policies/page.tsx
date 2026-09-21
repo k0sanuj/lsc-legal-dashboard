@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma"
-import { requireSession } from "@/lib/auth"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
+import Link from "next/link"
+import { createInternalPolicy } from "@/actions/review-schedules"
+import { EntityActionForm } from "@/components/legal/entity-action-form"
+import { EntityField, fieldClass } from "@/components/legal/entity-fields"
 import { formatDate } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -23,7 +27,7 @@ import { FileUpload } from "@/components/legal/file-upload"
 import { uploadPolicyFile } from "@/actions/files"
 
 export default async function PoliciesPage() {
-  await requireSession()
+  await requireGlobalDocumentAccess()
 
   const policies = await prisma.policyDocument.findMany({
     orderBy: [{ category: "asc" }, { effective_date: "desc" }],
@@ -47,12 +51,14 @@ export default async function PoliciesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Policies</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Policies &amp; Procedures</h1>
         <p className="text-muted-foreground">
-          Company policy repository and acknowledgment tracking
+          Internal policy repository and acknowledgment tracking
         </p>
       </div>
 
+      <Link href="/legal/compliance/reviews" className="inline-block text-sm text-primary underline">Review schedules and completion history</Link>
+      <details className="border-y border-border py-4"><summary className="cursor-pointer text-sm">Add internal policy or procedure</summary><EntityActionForm action={createInternalPolicy} className="mt-4"><div className="grid gap-4 sm:grid-cols-2"><EntityField label="Title *"><input className={fieldClass} name="title" required /></EntityField><EntityField label="Effective date *"><input className={fieldClass} name="effective_date" type="date" required /></EntityField></div><div className="mt-4"><EntityField label="Approved policy content *"><textarea className={fieldClass} name="content" required rows={6} /></EntityField></div><label className="mt-3 flex gap-2 text-xs"><input name="acknowledgment_required" type="checkbox" defaultChecked />Acknowledgment required</label></EntityActionForm></details>
       <Card>
         <CardHeader>
           <CardTitle>Policy Documents</CardTitle>
@@ -99,6 +105,7 @@ export default async function PoliciesPage() {
                     <TableRow key={policy.id}>
                       <TableCell className="font-medium">
                         {policy.title}
+                        {policy.content && <details className="mt-2 text-sm font-normal"><summary className="cursor-pointer text-primary">Read policy content</summary><div className="mt-3 max-w-2xl whitespace-pre-wrap">{policy.content}</div></details>}
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary">{policy.category}</Badge>
@@ -155,7 +162,7 @@ export default async function PoliciesPage() {
                       <TableCell>
                         {policy.file_url ? (
                           <a
-                            href={policy.file_url}
+                            href={`/api/policies/${policy.id}/file`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-1 text-primary hover:underline text-sm"

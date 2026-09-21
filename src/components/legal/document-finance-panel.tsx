@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils"
 
 interface ContractMetadata {
   contract_name: string | null
-  contract_value_usd: number | null
+  contract_value_usd: string | null
   contract_status: string | null
   sponsor_name: string | null
   contract_start_date: string | null // ISO date strings — server-side formatted
@@ -27,12 +27,13 @@ interface TrancheRow {
   id: string
   tranche_number: number | null
   tranche_label: string | null
-  tranche_amount_usd: number | null
+  tranche_amount_usd: string | null
   finance_post_status: string | null
 }
 
 interface Props {
   documentId: string
+  canManage?: boolean
   syncStatus: string | null // "synced" | "pending" | "failed" | null
   lastPostedAt: string | null // pre-humanized
   errorMessage: string | null
@@ -42,6 +43,7 @@ interface Props {
 
 export function DocumentFinancePanel({
   documentId,
+  canManage = false,
   syncStatus,
   lastPostedAt,
   errorMessage,
@@ -74,7 +76,7 @@ export function DocumentFinancePanel({
             variant="outline"
             size="sm"
             onClick={onResync}
-            disabled={isPending}
+            disabled={isPending || !canManage}
           >
             {isPending ? (
               <Loader2 className="size-3 animate-spin" />

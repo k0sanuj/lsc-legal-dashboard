@@ -1,5 +1,6 @@
 'use server'
 
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
@@ -7,6 +8,7 @@ import type { Entity, Jurisdiction, RegistrationStatus } from '@/generated/prism
 
 export async function upsertComplianceRecord(formData: FormData) {
   await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+  await requireGlobalDocumentAccess()
 
   const entity = formData.get('entity') as Entity
   const jurisdiction = formData.get('jurisdiction') as Jurisdiction
@@ -39,6 +41,7 @@ export async function upsertComplianceRecord(formData: FormData) {
 
 export async function createRegisteredOffice(formData: FormData) {
   await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN'])
+  await requireGlobalDocumentAccess()
 
   await prisma.registeredOfficeAgreement.create({
     data: {
@@ -58,6 +61,7 @@ export async function createRegisteredOffice(formData: FormData) {
 
 export async function upsertDataProtection(formData: FormData) {
   await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN'])
+  await requireGlobalDocumentAccess()
 
   const entity = formData.get('entity') as Entity
   const jurisdiction = formData.get('jurisdiction') as Jurisdiction

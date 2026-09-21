@@ -1,5 +1,6 @@
 'use server'
 
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
@@ -13,6 +14,7 @@ export async function createIncomingNotice(data: {
   category: NoticeCategory
 }) {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   const notice = await prisma.incomingNotice.create({
     data: {
@@ -37,6 +39,7 @@ export async function createIncomingNotice(data: {
 
 export async function updateNoticeStatus(noticeId: string, status: NoticeStatus, assignedTo?: string) {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   await prisma.incomingNotice.update({
     where: { id: noticeId },

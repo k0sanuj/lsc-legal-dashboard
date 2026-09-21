@@ -1,11 +1,13 @@
 'use server'
 
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 
 export async function toggleTableLock(formData: FormData) {
   const session = await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN'])
+  await requireGlobalDocumentAccess()
   const configId = formData.get('configId') as string
   const locked = formData.get('locked') === 'true'
 
@@ -21,6 +23,7 @@ export async function toggleTableLock(formData: FormData) {
 export async function createTableConfig() {
   'use server'
   await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN'])
+  await requireGlobalDocumentAccess()
 
   const defaults = [
     {

@@ -1,6 +1,9 @@
 'use server'
 
 import { requireRole } from '@/lib/auth'
+import { requireGlobalDocumentAccess } from '@/lib/document-access'
+import { setKycVerification } from '@/lib/entity-service'
+import { dateField, enumField, requiredText, textField, ENTITY_CODES, JURISDICTION_CODES } from '@/lib/entity-input'
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
@@ -12,13 +15,15 @@ import type { Entity, Jurisdiction, KycDocStatus } from '@/generated/prisma/clie
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 export async function createKycDocument(formData: FormData) {
-  await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+  await requireGlobalDocumentAccess(await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN']))
 
   const file = formData.get('file') as File | null
-  const entity = formData.get('entity') as Entity
-  const jurisdiction = formData.get('jurisdiction') as Jurisdiction
-  const documentType = formData.get('document_type') as string
-  const documentName = formData.get('document_name') as string
+  const entity = enumField(formData, 'entity', ENTITY_CODES)
+  const jurisdiction = enumField(formData, 'jurisdiction', JURISDICTION_CODES)
+  const documentType = requiredText(formData, 'document_type', 200)
+  const documentName = requiredText(formData, 'document_name', 400)
+  const profileId = textField(formData, 'entity_profile_id')
+  if (profileId && !await prisma.entityProfile.findUnique({ where: { id: profileId }, select: { id: true } })) throw new Error('Entity profile not found.')
   const hasFile = file && typeof file === 'object' && file.size > 0
 
   if (hasFile && file.size > MAX_UPLOAD_BYTES) {
@@ -39,9 +44,10 @@ export async function createKycDocument(formData: FormData) {
       jurisdiction,
       document_type: documentType,
       document_name: documentName,
+      entity_profile_id: profileId,
       file_url: fileUrl,
       status: 'COLLECTED',
-      expiry_date: formData.get('expiry_date') ? new Date(formData.get('expiry_date') as string) : null,
+      expiry_date: dateField(formData, 'expiry_date'),
     },
   })
 
@@ -61,16 +67,19 @@ export async function createKycDocument(formData: FormData) {
     })
   }
 
-  revalidatePath('/legal/kyc')
+  revalidatePath('/legal/compliance/entities/kyc')
+  revalidatePath('/legal/compliance/entities', 'layout')
   return { success: true, documentId: document.id, hasFile: Boolean(fileUrl) }
 }
 
 export async function uploadKycDocumentFile(formData: FormData) {
-  await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+  await requireGlobalDocumentAccess(await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN']))
 
   const file = formData.get('file') as File
   const documentId = formData.get('kycDocumentId') as string
-  const entity = (formData.get('entity') as string) || 'LSC'
+  const existingDocument = await prisma.kycDocument.findUnique({ where: { id: documentId }, select: { entity: true } })
+  if (!existingDocument) return { success: false, error: 'KYC record not found.' }
+  const entity = existingDocument.entity
 
   if (!file || !documentId) {
     return { success: false, error: 'File and KYC document ID required.' }
@@ -102,28 +111,23 @@ export async function uploadKycDocumentFile(formData: FormData) {
     }
   })
 
-  revalidatePath('/legal/kyc')
+  revalidatePath('/legal/compliance/entities/kyc')
+  revalidatePath('/legal/compliance/entities', 'layout')
   return { success: true, data: { url } }
 }
 
 export async function updateKycStatus(docId: string, status: KycDocStatus) {
-  const session = await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+  const session = await requireGlobalDocumentAccess(await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN']))
 
-  await prisma.kycDocument.update({
-    where: { id: docId },
-    data: {
-      status,
-      verified_by: status === 'VERIFIED' ? session.userId : undefined,
-      verified_at: status === 'VERIFIED' ? new Date() : undefined,
-    },
-  })
+  await setKycVerification(session, docId, status)
 
-  revalidatePath('/legal/kyc')
+  revalidatePath('/legal/compliance/entities/kyc')
+  revalidatePath('/legal/compliance/entities', 'layout')
   return { success: true }
 }
 
 export async function createAdminAccount(formData: FormData) {
-  await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN'])
+  await requireGlobalDocumentAccess(await requireRole(['PLATFORM_ADMIN', 'LEGAL_ADMIN']))
 
   await prisma.adminAccount.create({
     data: {
@@ -142,7 +146,7 @@ export async function createAdminAccount(formData: FormData) {
 }
 
 export async function createSubsidy(formData: FormData) {
-  await requireRole(['PLATFORM_ADMIN', 'FINANCE_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+  await requireGlobalDocumentAccess(await requireRole(['PLATFORM_ADMIN', 'FINANCE_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN']))
 
   await prisma.subsidy.create({
     data: {
@@ -161,7 +165,7 @@ export async function createSubsidy(formData: FormData) {
 }
 
 export async function updateSubsidyStatus(subsidyId: string, status: string) {
-  await requireRole(['PLATFORM_ADMIN', 'FINANCE_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+  await requireGlobalDocumentAccess(await requireRole(['PLATFORM_ADMIN', 'FINANCE_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN']))
 
   const data: Record<string, unknown> = { status }
   if (status === 'APPROVED') data.approval_date = new Date()

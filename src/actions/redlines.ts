@@ -1,5 +1,6 @@
 "use server"
 
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { prisma } from "@/lib/prisma"
 import { requireRole } from "@/lib/auth"
 import { getPresignedUrl, getS3KeyFromUrl } from "@/lib/s3"
@@ -104,6 +105,7 @@ function buildRedlineUrl(redlineId: string): string {
 
 export async function createRedlineFromDocument(formData: FormData) {
   const session = await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   const documentId = String(formData.get("documentId") ?? "").trim()
   const versionId = String(formData.get("versionId") ?? "").trim()
@@ -208,6 +210,7 @@ export async function createRedlineFromDocument(formData: FormData) {
 
 export async function updateRedlineDraft(formData: FormData) {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   const redlineId = String(formData.get("redlineId") ?? "").trim()
   const proposedText = String(formData.get("proposedText") ?? "")
@@ -250,6 +253,7 @@ export async function updateRedlineDraft(formData: FormData) {
 
 export async function addRedlineChange(formData: FormData) {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   const redlineId = String(formData.get("redlineId") ?? "").trim()
   const changeType = String(formData.get("changeType") ?? "").trim()
@@ -313,6 +317,7 @@ export async function setRedlineChangeStatus(
   status: RedlineChangeStatus
 ) {
   const session = await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   try {
     if (!changeId) {
@@ -354,6 +359,7 @@ export async function setRedlineChangeStatus(
 
 export async function deleteRedlineChange(changeId: string) {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   try {
     if (!changeId) {
@@ -385,6 +391,7 @@ export async function transitionRedline(
   notes?: string
 ) {
   const session = await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   try {
     if (!redlineId) {
@@ -491,6 +498,7 @@ export async function transitionRedline(
 
 export async function deleteRedline(redlineId: string) {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   try {
     if (!redlineId) {

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireSession } from "@/lib/auth"
 import { formatDate, ENTITIES } from "@/lib/constants"
 import { CreateClickwrapForm } from "@/components/legal/create-clickwrap-form"
@@ -39,6 +40,7 @@ export default async function ClickwrapPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   const params = await searchParams
   const search =

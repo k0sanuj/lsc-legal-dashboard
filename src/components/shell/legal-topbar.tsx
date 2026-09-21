@@ -2,37 +2,10 @@
 
 import { usePathname } from "next/navigation"
 import { ChevronRight } from "lucide-react"
+import { NAV_ITEMS } from "@/lib/permissions"
 import { NotificationBell } from "./notification-bell"
 
-const ROUTE_LABELS: Record<string, string> = {
-  "/legal": "Command Center",
-  "/legal/documents": "Documents",
-  "/legal/documents/review": "Review Queue",
-  "/legal/signatures": "Signatures",
-  "/legal/generate": "AI Generator",
-  "/legal/templates": "Templates",
-  "/legal/expirations": "Expirations",
-  "/legal/compliance": "Compliance",
-  "/legal/compliance/data-protection": "Data Protection",
-  "/legal/compliance/registered-offices": "Registered Offices",
-  "/legal/compliance/emails": "Company Emails",
-  "/legal/esop": "Cap Table",
-  "/legal/policies": "Policies",
-  "/legal/issues": "Issues",
-  "/legal/tracker": "Tracker",
-  "/legal/payment-cycles": "Payment Cycles",
-  "/legal/litigation": "Litigation",
-  "/legal/kyc": "KYC",
-  "/legal/admin-accounts": "Admin Accounts",
-  "/legal/subsidies": "Subsidies",
-  "/legal/email-intelligence": "Email Intelligence",
-  "/legal/agreements": "Agreements",
-  "/legal/clickwrap": "Clickwrap",
-  "/legal/audit-reports": "Audit Reports",
-  "/legal/agent-architecture": "Agent Architecture",
-  "/legal/file-naming": "File Naming",
-  "/legal/table-config": "Table Config",
-}
+const ROUTE_LABELS: Record<string, string> = Object.fromEntries(NAV_ITEMS.map(item => [item.href, item.label]))
 
 interface LegalTopbarProps {
   userId?: string

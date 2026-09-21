@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireSession } from "@/lib/auth"
 import { AgentArchitectureView } from "./agent-architecture-view"
 import { Bot } from "lucide-react"
 
 export default async function AgentArchitecturePage() {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   // Fetch real agent activity and messages
   const [recentMessages, recentLogs, messageCounts] = await Promise.all([

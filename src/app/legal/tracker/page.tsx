@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireSession } from "@/lib/auth"
 import {
   TRACKER_CATEGORY_LABELS,
@@ -74,6 +75,7 @@ const TAB_ORDER: TrackerCategory[] = [
 
 export default async function TrackerPage() {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   const items = await prisma.trackerItem.findMany({
     orderBy: [{ priority: "asc" }, { ref_code: "asc" }],

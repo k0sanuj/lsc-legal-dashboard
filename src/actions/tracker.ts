@@ -1,5 +1,6 @@
 "use server"
 
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { prisma } from "@/lib/prisma"
 import { requireSession } from "@/lib/auth"
 import { revalidatePath } from "next/cache"
@@ -10,6 +11,7 @@ export async function updateTrackerStatus(
   status: TrackerStatus
 ) {
   await requireSession()
+  await requireGlobalDocumentAccess()
 
   if (!itemId || !status) {
     throw new Error("Missing required fields: itemId, status")

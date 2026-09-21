@@ -15,6 +15,7 @@
  *                           receiving countersignature requests is exactly the
  *                           failure a missing-env error prevents
  */
+import { createHash } from "node:crypto"
 import { after } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getS3Key, uploadBufferToS3 } from "@/lib/s3"
@@ -32,6 +33,7 @@ import {
 import { emitLegalTrackerEvent } from "@/lib/legal-tracker"
 import { buildAgreementSentMessage } from "@/lib/legal-tracker-payloads"
 import { getAppBaseUrl } from "@/lib/app-url"
+import { recordArtifact } from "@/lib/document-artifacts"
 
 export interface MndaSendParams {
   templateKind: "individual" | "business"
@@ -346,6 +348,7 @@ export async function sendMnda(params: MndaSendParams, actor: MndaSendActor): Pr
   const effectiveDatePretty = formatEffectiveDate(params.effectiveDate)!
   const passport = params.passportNumber?.trim() ?? ""
 
+  let sendAttempted = false
   try {
     const { content, templateId } = await loadTemplateContent(params.templateKind)
     const rendered = await renderMndaPdf(content, params, {
@@ -377,7 +380,23 @@ export async function sendMnda(params: MndaSendParams, actor: MndaSendActor): Pr
     const s3Key = getS3Key("FSP", "generated", `${documentTitle}.pdf`)
     const fileUrl = await uploadBufferToS3(rendered.bytes, s3Key, "application/pdf")
 
-    const document = await prisma.legalDocument.create({
+    const sourceBytes = Buffer.from(content, "utf8")
+    const sourceHash = createHash("sha256").update(sourceBytes).digest("hex")
+    const sourceUrl = await uploadBufferToS3(sourceBytes, `templates/mnda-source/${sourceHash}.txt`, "text/plain; charset=utf-8")
+    const { document, sourceArtifact } = await prisma.$transaction(async (tx) => {
+      let sourceTemplateId = templateId
+      if (!sourceTemplateId) {
+        const identity = createHash("sha256").update(`mnda-source:${params.templateKind}:${sourceHash}`).digest("hex")
+        sourceTemplateId = `${identity.slice(0, 8)}-${identity.slice(8, 12)}-${identity.slice(12, 16)}-${identity.slice(16, 20)}-${identity.slice(20, 32)}`
+        await tx.contractTemplate.upsert({ where: { id: sourceTemplateId }, update: {}, create: {
+          id: sourceTemplateId, name: `MNDA ${params.templateKind} checked-in source snapshot`, category: "NDA", entity: "FSP", content,
+          variables: Array.from(new Set(Array.from(content.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g), match => match[1]))), is_active: false,
+        } })
+      }
+      const templateArtifact = await recordArtifact({ templateId: sourceTemplateId, stage: "template", fileUrl: sourceUrl, originalName: `mnda-${params.templateKind}-${sourceHash.slice(0, 12)}.txt`, mimeType: "text/plain", bytes: sourceBytes, actorId: actor.userId,
+        provenance: { source: templateId ? "database-template-snapshot" : "checked-in-mnda-fallback", contentHash: sourceHash },
+      }, tx)
+      const document = await tx.legalDocument.create({
       data: {
         title: documentTitle,
         category: "NDA",
@@ -399,6 +418,22 @@ export async function sendMnda(params: MndaSendParams, actor: MndaSendActor): Pr
       },
       include: { signature_requests: true },
     })
+      const sourceArtifact = await recordArtifact({
+        documentId: document.id,
+        stage: "populated",
+        sourceArtifactId: templateArtifact.id,
+        fileUrl,
+        originalName: `${documentTitle}.pdf`,
+        mimeType: "application/pdf",
+        bytes: rendered.bytes,
+        actorId: actor.userId,
+        signerScope: [counterpartyEmail, signerEmail],
+        finalized: true,
+        provenance: { source: "mnda-render", templateId, templateKind: params.templateKind },
+      }, tx)
+      await tx.legalDocument.update({ where: { id: document.id }, data: { signature_source_artifact_id: sourceArtifact.id } })
+      return { document, sourceArtifact }
+    })
 
     const counterpartyFields: OpenSignFieldPlacement[] = [
       placement(rendered.anchors.cp_signature, "signature"),
@@ -408,6 +443,7 @@ export async function sendMnda(params: MndaSendParams, actor: MndaSendActor): Pr
       counterpartyFields.push(placement(rendered.anchors.cp_passport, "text input"))
     }
 
+    sendAttempted = true
     const result = await createOpenSignDocument({
       title: documentTitle,
       note: `Signature required: ${documentTitle}`,
@@ -438,6 +474,7 @@ export async function sendMnda(params: MndaSendParams, actor: MndaSendActor): Pr
           lifecycle_status: "AWAITING_SIGNATURE",
           signature_provider: "opensign",
           signature_provider_request_id: result.providerDocumentId,
+          signature_source_artifact_id: sourceArtifact.id,
           signature_status: "SENT",
           signature_sent_at: now,
         },
@@ -524,7 +561,7 @@ export async function sendMnda(params: MndaSendParams, actor: MndaSendActor): Pr
     return {
       success: false,
       safe: false,
-      error: "MNDA generation failed. The details are in the server logs and nothing was sent.",
+      error: sendAttempted ? "MNDA sending could not be confirmed. Check the document and signing provider before retrying." : "MNDA generation failed before a send was attempted. Check the server logs.",
     }
   }
 }

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { requireGlobalDocumentAccess } from "@/lib/document-access"
 import { requireRole } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -47,6 +48,7 @@ function isSmokeTestEvent(event: { entity_id: string; payload: unknown }): boole
 
 export default async function FinanceSyncPage() {
   await requireRole(["PLATFORM_ADMIN", "LEGAL_ADMIN"])
+  await requireGlobalDocumentAccess()
 
   const events = await prisma.crossModuleEvent.findMany({
     where: { source: "legal" },

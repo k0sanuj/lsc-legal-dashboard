@@ -71,3 +71,21 @@ worker and review gates, not a provider environment-variable change.
 - Claude CLI authentication follows each user's own official sign-in unless an
   explicit Anthropic arrangement permits another model. Current official
   references are linked in the specification.
+
+## 21 September 2026: production and authentication authorization
+
+Anuj authorized all v2 implementations and deployment to the existing GCP service
+in this run. B+C remains the selected UI. Slack identities U09M02EKP9R and
+U0BNH4P0KFZ are explicitly linked from their verified leaguesportsco.com emails
+to Adi's and Arvind's futureofsports.io app accounts. Runtime still checks each
+current Slack profile before applying that mapping.
+
+Anuj then replaced the Claude subscription plan with Codex CLI and his ChatGPT
+login on a dedicated VM in `fsp-legal-esign`. This supersedes the earlier Claude
+per-user authentication interpretation. The worker owns its private CLI login;
+the app stores only worker protocol credentials and distinct owner/requester
+metadata. The four confirmed document principals remain the requester allowlist.
+Anuj's worker ownership is not a fifth global document-access grant.
+
+Anuj identified `anuj@futureofsports.io` as a Workspace admin. Admin session,
+mailbox type, actual delegate receipts and recipient access are separate checks.
