@@ -27,7 +27,12 @@ async function persistReport(finished = false) {
   }
   // Each completed source has a private GCS receipt. If receipt persistence fails,
   // stop; deterministic artifact IDs make a later rerun safe.
-  if (apply) await uploadBufferToS3(Buffer.from(body), reportKey, "application/json")
+  if (apply) {
+    // GCS limits repeated replacement of one object. Each checkpoint is immutable;
+    // the final manifest is written once after every source has a durable receipt.
+    const key = finished ? reportKey : reportKey.replace("manifest.json", `checkpoints/${receipts.length}.json`)
+    await uploadBufferToS3(Buffer.from(body), key, "application/json")
+  }
 }
 
 function originalName(url: string, fallback: string) {
