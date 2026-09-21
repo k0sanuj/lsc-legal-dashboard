@@ -47,4 +47,3 @@ export async function createInternalPolicy(form: FormData) {
   revalidatePath('/legal/policies')
   return result
 }
-

@@ -79,4 +79,3 @@ export async function updateNativeAmountForActor(session: SessionPayload, form: 
   const amount = text(form, "value")
   await prisma.legalDocument.update({ where: { id }, data: { value: amount ? decimalAmount(amount) : null, currency } })
 }
-
