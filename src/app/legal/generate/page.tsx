@@ -1,5 +1,8 @@
+// Shows drafting availability before loading templates or the interactive form.
+import Link from "next/link"
 import { prisma } from "@/lib/prisma"
 import { requireRole } from "@/lib/auth"
+import { CONTRACT_GENERATION_PAUSED, CONTRACT_GENERATION_PAUSED_MESSAGE } from "@/lib/contract-generation"
 import { ENTITIES } from "@/lib/constants"
 import { Sparkles } from "lucide-react"
 import { GenerateForm } from "./generate-form"
@@ -74,6 +77,29 @@ function normalizeTemplateVariables(value: unknown): TemplateVariable[] {
 
 export default async function GeneratePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireRole(["PLATFORM_ADMIN", "FINANCE_ADMIN", "LEGAL_ADMIN", "OPS_ADMIN"])
+
+  if (CONTRACT_GENERATION_PAUSED) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold tracking-tight">AI Contract Generator</h1>
+        <section aria-labelledby="generation-status" className="border-t border-border py-6">
+          <h2 id="generation-status" className="text-lg font-semibold">Generation paused</h2>
+          <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+            {CONTRACT_GENERATION_PAUSED_MESSAGE}
+          </p>
+          <div className="mt-5 flex flex-wrap gap-6 text-sm">
+            <Link href="/legal/documents" className="text-primary underline underline-offset-4">
+              View documents
+            </Link>
+            <Link href="/legal/templates" className="text-primary underline underline-offset-4">
+              View templates
+            </Link>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
   const params = await searchParams
   const preselectedTemplate = typeof params.template === 'string' ? params.template : undefined
 

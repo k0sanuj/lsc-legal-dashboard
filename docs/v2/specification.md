@@ -168,5 +168,6 @@ from Slack requests and legal decisions. All values are placeholders or unknowns
 Operational actions are disabled. The website is independent from the dashboard,
 with no data connections. Publication is owner-private.
 
-Wait for a direction before editing application UI, as requested in Anuj's
-project instructions. Then execute one `PLAN.md` task per run and PR.
+Anuj selected B and C on 21 September 2026: entity-centered dashboard context
+with Slack-led operations. The direction-selection gate is satisfied. Execute
+one `PLAN.md` task per run and PR, retaining the shared shell and navigation.

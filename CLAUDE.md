@@ -7,6 +7,13 @@ Module 2 of the LSC Operations Platform. Full legal operations platform: complia
 
 ## Agent Architecture
 
+AI contract generation and refinement are paused in `src/actions/generate.ts`
+and the generator page, using the shared state in `src/lib/contract-generation.ts`.
+Keep authorization before the pause and return before reading templates or
+calling providers. Enable drafting only after the Claude CLI worker and review
+gates are ready. Existing document analysis agents and deterministic MNDA sending
+are separate from this pause. Verify with `node scripts/verify-generation-pause.mjs`.
+
 Agents live in `src/lib/agents/`. Each extends `BaseAgent` and implements `run()`.
 
 - **Orchestrator** (`orchestrator.ts`): Single registry for runnable agents and direct `runAgent()` triggers

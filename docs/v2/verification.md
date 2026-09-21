@@ -59,6 +59,7 @@ Those remain implementation tasks, not fixes delivered by this review.
 and has no application build or runtime claim. Run the repository gate for each
 implementation task before opening a PR. No PR was opened for this preparation.
 
-V2-01 is complete. The user must choose A, B or C before application UI changes,
-per the mock-first rule in `/Users/anujsingh/.codex/AGENTS.md:119-121`.
-V2-02 begins only in the subsequent implementation run.
+V2-01 is complete. Anuj subsequently selected a mix of B and C on 21 September
+2026, satisfying the mock-first rule in `/Users/anujsingh/.codex/AGENTS.md:119-121`.
+The subsequent V2-02 implementation evidence is recorded separately in
+[generation-pause-verification.md](generation-pause-verification.md).

@@ -2,8 +2,9 @@
 
 ## 21 September 2026: Legal OS v2
 
-Status: product requirements accepted from Anuj; implementation pending.
-This log does not assert that any feature or external integration is live.
+Status: product requirements accepted from Anuj. V2-02 is implemented locally;
+remaining implementation is tracked in `PLAN.md`. This log does not assert that
+any change or external integration is live.
 
 1. Maintain three linked document repositories: finalized source templates,
    populated documents per signer/deliverables, and completed signed versions.
@@ -45,7 +46,20 @@ This log does not assert that any feature or external integration is live.
     owner initials require approved sources. No version suffix in shared names.
 12. The proposed Thursday meeting was cancelled from this task's scope by Anuj.
 
-## Implementation interpretations to confirm with the design selection
+## 21 September 2026: B and C selected
+
+Anuj selected a mix of the entity-centered workspace (B) and Slack-led workflows
+(C). The design-selection gate is satisfied. Use B for entity, ownership, KYC and
+compliance context, with C for requests, routine operations and legal decisions.
+Retain one shared shell and source of navigation. Do not use A as the foundation.
+
+V2-02 pauses generation and refinement on the server before template reads,
+usage-count writes or provider calls. Existing authorized draft saves, document
+work and deterministic MNDA sending remain separate. This is a source-code
+change, not evidence that production is paused. Reactivation requires the CLI
+worker and review gates, not a provider environment-variable change.
+
+## Implementation interpretations
 
 - USD is the reporting default, not permission to relabel an unconverted native
   amount. The agreement-currency filter scopes included records; row amounts

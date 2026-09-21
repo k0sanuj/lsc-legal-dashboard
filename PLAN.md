@@ -23,7 +23,7 @@ outside this preparation pass.
 ## Tasks in dependency order
 
 - [x] V2-01: Record the specification, audit current paths, publish three static mock directions, and stop for a selection. Verify page links, explicit placeholders, disabled external actions, responsive layouts and independent review. Store the publication URL and verification evidence in `docs/v2/verification.md`.
-- [ ] V2-02: Pause AI generation and refinement on the server with an honest UI state. Direct requests must invoke no provider while paused. Keep deterministic MNDA/template sending separate. Requires the mock selection before UI edits.
+- [x] V2-02: Pause AI generation and refinement on the server with an honest UI state. Direct requests must invoke no provider while paused. Keep deterministic MNDA/template sending separate. Verified in the isolated checkout; see `docs/v2/generation-pause-verification.md`. Not deployed.
 - [ ] V2-03: Enforce one document-access policy for the four confirmed access principals, with scoped requests/grants for others. Cover listing, search, details, file streaming, versions, KYC/litigation attachments, export and Slack. Verify a fifth user cannot retrieve content, titles or snippets without a grant. Preserve individual audit attribution for shared-mailbox delegates.
 - [ ] V2-04: Establish canonical native-currency amounts, sourced FX, USD reporting and currency filtering. Use server-side Decimal calculations and decimal strings at boundaries. Verify mixed currencies, null versus zero, unavailable FX, filtering and totals beyond pagination. Coordinate Finance payload semantics before changing existing money fields.
 - [ ] V2-05: Implement the approved organization-wide filename lexicon and deterministic formatter. Use arena, three-letter category, full counterparty, agreed date, owner initials and actual extension. Remove version suffixes from published names, retain internal history, and distinguish proposed, approved and applied names. Do not bulk-rename existing shared files in this task.
@@ -42,11 +42,13 @@ outside this preparation pass.
 - [ ] V2-18: Expand Slack operation coverage through shared application services. Define the operation inventory and denominator before claiming 90% coverage. Include review completion, entity/KYC updates, dispute updates, generation job status and backup status; preserve signature/replay protections and audit receipts.
 - [ ] V2-19: Provision and verify human mailbox access to `legal@futureofsports.io` for `ak@futureofsports.io` and `arvind@futureofsports.io` using Google Workspace administration. Confirm mailbox type and delegation mode before the change. Verify each recipient can use the intended mailbox; a Gmail watch or application login is not proof.
 
-## Current review gate
+## Selected direction
 
-Choose A (registers), B (entities), or C (Slack) after opening the review URL.
-A is the recommended dashboard foundation, with the Slack capabilities in C
-remaining part of the product scope whichever layout is chosen.
+On 21 September 2026, Anuj selected a mix of B and C: an entity-centered dashboard
+with Slack-led operations and an exception/review workspace. The design-selection
+gate is satisfied. Keep one shared shell and navigation; entity records, KYC,
+compliance and ownership form the dashboard foundation, while Slack handles the
+routine operations. A is not the selected foundation.
 
 The calendar follow-up was explicitly removed from scope by Anuj on
 21 September 2026. Do not create an event, reminder or automation for it.

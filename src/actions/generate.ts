@@ -1,13 +1,13 @@
 'use server'
 
+// Owns AI drafting and draft saves. Authorize before returning the shared pause.
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { CONTRACT_GENERATION_PAUSED, CONTRACT_GENERATION_PAUSED_MESSAGE } from '@/lib/contract-generation'
 import { revalidatePath } from 'next/cache'
 import Anthropic from '@anthropic-ai/sdk'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' })
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '')
 const PROVIDER = (process.env.AI_PROVIDER ?? 'anthropic').toLowerCase()
 const SONNET = 'claude-sonnet-4-6'
 
@@ -15,6 +15,7 @@ type Turn = { role: 'user' | 'assistant'; content: string }
 
 async function callGenerationAI(system: string, turns: Turn[], maxTokens = 4096): Promise<string> {
   if (PROVIDER === 'gemini') {
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '')
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro', systemInstruction: system })
     if (turns.length === 1) {
       return (await model.generateContent(turns[0]!.content)).response.text()
@@ -26,6 +27,7 @@ async function callGenerationAI(system: string, turns: Turn[], maxTokens = 4096)
     const chat = model.startChat({ history })
     return (await chat.sendMessage(turns[turns.length - 1]!.content)).response.text()
   }
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' })
   const res = await anthropic.messages.create({
     model: SONNET,
     max_tokens: maxTokens,
@@ -54,6 +56,15 @@ export async function generateContract(
   reference?: string
 ) {
   await requireRole(['PLATFORM_ADMIN', 'FINANCE_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+
+  if (CONTRACT_GENERATION_PAUSED) {
+    return {
+      success: false,
+      draft: '',
+      code: 'GENERATION_PAUSED' as const,
+      error: CONTRACT_GENERATION_PAUSED_MESSAGE,
+    }
+  }
 
   let templateContent = ''
   let templateName = templateId
@@ -119,6 +130,15 @@ export async function refineContract(
   instruction: string
 ) {
   await requireRole(['PLATFORM_ADMIN', 'FINANCE_ADMIN', 'LEGAL_ADMIN', 'OPS_ADMIN'])
+
+  if (CONTRACT_GENERATION_PAUSED) {
+    return {
+      success: false,
+      draft: '',
+      code: 'GENERATION_PAUSED' as const,
+      error: CONTRACT_GENERATION_PAUSED_MESSAGE,
+    }
+  }
 
   try {
     const refined = await callGenerationAI(SYSTEM_PROMPT, [

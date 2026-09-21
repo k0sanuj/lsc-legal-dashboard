@@ -21,6 +21,17 @@ until they have a class, trigger, tests, and observable output.
 
 ## Trigger Map
 
+- `src/actions/generate.ts`
+  - AI generation and refinement return `GENERATION_PAUSED` after role checks.
+  - Shared availability/message live in `src/lib/contract-generation.ts`.
+  - While paused, no template lookup, usage-count update or provider construction
+    is allowed. The generator page returns the pause before loading templates.
+  - This does not pause document-analysis agents or deterministic MNDA sending.
+  - Reactivation requires the Claude CLI worker and review gates. Do not use an
+    environment flag to re-enable legacy API drafting.
+  - `node scripts/verify-generation-pause.mjs` exercises the actions and role
+    checks with database/provider boundaries blocked; it is in the release gate.
+
 - `src/actions/documents.ts`
   - New upload with extracted text: schedules `agreement-analyzer` with `after()`.
   - Analyzer output is persisted to `DocumentAnalysis`; the latest row is the source of truth for summaries, dates, clauses, gaps, risks, and next steps.
