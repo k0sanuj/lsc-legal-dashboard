@@ -89,3 +89,12 @@ Anuj's worker ownership is not a fifth global document-access grant.
 
 Anuj identified `anuj@futureofsports.io` as a Workspace admin. Admin session,
 mailbox type, actual delegate receipts and recipient access are separate checks.
+
+## 21 September 2026: production dependency correction
+
+The release audit found that the existing Next.js 16.2.4 runtime is affected by
+[the Server Actions denial-of-service advisory](https://github.com/vercel/next.js/security/advisories/GHSA-m99w-x7hq-7vfj).
+This application uses the affected App Router and Server Actions architecture.
+The release moves narrowly to Next.js 16.3.5 with its matching lint configuration
+and required PostCSS version. No broad dependency auto-fix is authorized by this
+change. Build, workflow and deployed access checks still gate production cutover.

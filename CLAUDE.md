@@ -26,7 +26,7 @@ Agents live in `src/lib/agents/`. Each extends `BaseAgent` and implements `run()
 - `AgentMessage` is diagnostic/legacy plumbing only; production workflows use direct triggers. Cross-dashboard events use the durable `CrossModuleEvent` queue.
 
 ## Tech Stack
-- **Framework**: Next.js 16.2.4 (App Router, Server Components)
+- **Framework**: Next.js 16.3.5 (App Router, Server Components)
 - **Database**: NeonDB (PostgreSQL) via Prisma 7.6.0
 - **UI**: shadcn/ui + Tailwind CSS v4 (dark mode primary)
 - **Charts**: Recharts
